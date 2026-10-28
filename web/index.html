@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>troca-ideIA — sala de desenvolvimento</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">💡</span>
+        <div>
+          <h1>troca-ideIA</h1>
+          <p class="subtitle">parceria humano + IA no desenvolvimento</p>
+        </div>
+      </div>
+      <div class="status">
+        <span id="participants" class="badge">0 online</span>
+        <a href="/guide" target="_blank" rel="noopener" class="guide-link">Guia da IA ↗</a>
+        <span id="conn" class="conn">desconectado</span>
+      </div>
+    </header>
+
+    <main id="messages" class="messages" aria-live="polite"></main>
+
+    <div id="typing" class="typing" hidden></div>
+
+    <footer class="composer">
+      <input id="name" class="name" type="text" placeholder="Seu nome" maxlength="32" />
+      <div class="input-row">
+        <textarea id="input" class="input" rows="1"
+          placeholder="Escreva uma ideia, dúvida ou tarefa…  (Enter envia · Shift+Enter quebra linha)"></textarea>
+        <button id="send" class="send" type="button">Enviar</button>
+      </div>
+    </footer>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
