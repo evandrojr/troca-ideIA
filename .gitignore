@@ -1,4 +1,8 @@
 node_modules/
 *.exe
 troca-ideia
+history.jsonl
+ia-names.json
 .env
+cmd/poke/bin/
+*.log

@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -54,16 +57,93 @@ type Room struct {
 	history []Message
 	mu      sync.Mutex
 	counter int64
+
+	// lastSeen guarda quando cada nome postou pela última vez (humano ou IA).
+	// Permite contar "participantes ativos" mesmo sem WebSocket — agentes
+	// HTTP comunicam por POST /api/messages + long-poll /api/watch.
+	lastSeen map[string]time.Time
+
+	historyFile string // caminho do arquivo de persistência ("" = sem persistência)
+	// maxHistory limita o nº de mensagens mantidas em memória (histórico + snapshot).
+	// 0 = ilimitado. Config via HISTORY_MAX=0|500|...
+	maxHistory int
 }
 
+const activeWindow = 15 * time.Minute // janela de "online" para quem não mantém WS
+
 func NewRoom() *Room {
+	f := getEnv("HISTORY_FILE", "history.jsonl")
 	return &Room{
-		clients:    make(map[*Client]bool),
-		register:   make(chan *Client, 16),
-		unregister: make(chan *Client, 16),
-		broadcast:  make(chan Message, 512),
-		watchers:   make(map[chan struct{}]struct{}),
+		clients:     make(map[*Client]bool),
+		register:    make(chan *Client, 16),
+		unregister:  make(chan *Client, 16),
+		broadcast:   make(chan Message, 512),
+		watchers:    make(map[chan struct{}]struct{}),
+		lastSeen:    make(map[string]time.Time),
+		historyFile: f,
+		maxHistory:  getEnvInt("HISTORY_MAX", 500),
 	}
+}
+
+// loadHistory reconstrói o histórico do disco caso HISTORY_FILE esteja definido.
+// Chame antes de Run.
+func (r *Room) loadHistory() {
+	if r.historyFile == "" {
+		return
+	}
+	f, err := os.Open(r.historyFile)
+	if err != nil {
+		return // arquivo ainda não existe: começa vazio
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1024*1024), 1024*1024)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		var m Message
+		if json.Unmarshal([]byte(line), &m) != nil || m.ID == "" {
+			continue
+		}
+		r.history = append(r.history, m)
+	}
+	r.trimHistory()
+	r.setCounterFromHistory()
+}
+
+func (r *Room) trimHistory() {
+	if r.maxHistory <= 0 || len(r.history) <= r.maxHistory {
+		return // 0 = ilimitado
+	}
+	r.history = r.history[len(r.history)-r.maxHistory:]
+}
+
+// setCounterFromHistory faz o próximo id não colidir com os já gravados.
+func (r *Room) setCounterFromHistory() {
+	for _, m := range r.history {
+		if n, err := strconv.ParseInt(strings.TrimPrefix(m.ID, "m"), 10, 64); err == nil && n > r.counter {
+			r.counter = n
+		}
+	}
+}
+
+// saveToDisk grava uma mensagem nova em append no arquivo de histórico.
+func (r *Room) saveToDisk(m Message) {
+	if r.historyFile == "" {
+		return
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return
+	}
+	f, err := os.OpenFile(r.historyFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	f.Write(append(b, '\n'))
 }
 
 // Run é o loop único que processa toda a entrada/saída da sala.
@@ -148,10 +228,10 @@ func (r *Room) append(m Message) {
 			return // já gravado (ex.: ack HTTP e broadcast)
 		}
 	}
-	if len(r.history) >= 500 {
-		r.history = r.history[len(r.history)-500:]
-	}
 	r.history = append(r.history, m)
+	r.lastSeen[m.Name] = time.Now()
+	r.trimHistory()
+	r.saveToDisk(m)
 }
 
 // Snapshot devolve uma cópia do histórico para um novo participante.
@@ -166,13 +246,46 @@ func (r *Room) Snapshot() []Message {
 func (r *Room) Count() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return len(r.clients)
+	ws := len(r.clients)
+	active := 0
+	cutoff := time.Now().Add(-activeWindow)
+	seen := make(map[string]bool, len(r.clients))
+	for c := range r.clients {
+		if c.name != "" {
+			seen[c.name] = true
+		}
+	}
+	for name, t := range r.lastSeen {
+		if !t.Before(cutoff) && !seen[name] {
+			active++
+		}
+	}
+	return ws + active
 }
 
 func (r *Room) HistoryLen() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return len(r.history)
+}
+
+// MaxHistory devolve o limite de mensagens retidas (0 = ilimitado).
+func (r *Room) MaxHistory() int { return r.maxHistory }
+
+// DistinctAINames devolve nomes distintos de Role=="ai" presentes no histórico,
+// na ordem de aparição. Usado para semear a configuração de IAs na 1ª execução.
+func (r *Room) DistinctAINames() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := []string{}
+	seen := map[string]bool{}
+	for _, m := range r.history {
+		if m.Role == "ai" && m.Name != "" && !seen[m.Name] {
+			seen[m.Name] = true
+			out = append(out, m.Name)
+		}
+	}
+	return out
 }
 
 // Watch devolve as mensagens com índice >= sinceIdx, bloqueando até timeout
@@ -285,9 +398,23 @@ func (c *Client) readPump() {
 
 func (c *Client) writePump() {
 	defer func() { _ = c.conn.Close() }()
-	for m := range c.send {
-		if err := c.conn.WriteJSON(m); err != nil {
-			return
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case m, ok := <-c.send:
+			if !ok {
+				return
+			}
+			if err := c.conn.WriteJSON(m); err != nil {
+				return
+			}
+		case <-ticker.C:
+			// ping mantém o readPump do cliente e o nosso read deadline vivos;
+			// sem isso, um WS mudo é derrubado após 70s (SetReadDeadline).
+			if err := c.conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(time.Second)); err != nil {
+				return
+			}
 		}
 	}
 }

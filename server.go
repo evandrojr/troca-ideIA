@@ -19,7 +19,7 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(*http.Request) bool { return true },
 }
 
-func newServer(room *Room) http.Handler {
+func newServer(room *Room, aiNames *AINames) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
@@ -28,9 +28,11 @@ func newServer(room *Room) http.Handler {
 
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{
-			"room":       "principal",
+			"room":         "principal",
 			"participants": room.Count(),
-			"guide":      "/guide",
+			"guide":        "/guide",
+			"ia_names":     aiNames.Names(),
+			"history_max":  room.MaxHistory(), // 0 = ilimitado
 			"endpoints": map[string]string{
 				"ws":      "/ws?name=<nome>&role=human|ai",
 				"history": "GET /api/messages",
@@ -38,6 +40,26 @@ func newServer(room *Room) http.Handler {
 				"watch":   "GET /api/watch?since=<idx>&timeout=25",
 			},
 		})
+	})
+
+	mux.HandleFunc("/api/ia-names", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, map[string]any{"names": aiNames.Names()})
+		case http.MethodPost:
+			var body struct {
+				Names []string `json:"names"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if err := aiNames.Set(body.Names); err != nil {
+				http.Error(w, "falha ao salvar", http.StatusInternalServerError)
+				return
+			}
+			writeJSON(w, map[string]any{"ok": true, "names": aiNames.Names()})
+		default:
+			w.Header().Set("Allow", "GET, POST")
+			http.Error(w, "método não permitido", http.StatusMethodNotAllowed)
+		}
 	})
 
 	mux.HandleFunc("/api/messages", func(w http.ResponseWriter, r *http.Request) {

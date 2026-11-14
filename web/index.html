@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>troca-ideIA — sala de desenvolvimento</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
@@ -19,6 +20,7 @@
       <div class="status">
         <span id="participants" class="badge">0 online</span>
         <a href="/guide" target="_blank" rel="noopener" class="guide-link">Guia da IA ↗</a>
+        <button id="cfg" class="cfg-btn" type="button" title="Configuração das IAs">⚙</button>
         <span id="conn" class="conn">desconectado</span>
       </div>
     </header>
@@ -30,11 +32,28 @@
     <footer class="composer">
       <input id="name" class="name" type="text" placeholder="Seu nome" maxlength="32" />
       <div class="input-row">
+        <div id="mentionmenu" class="mentionmenu" hidden></div>
         <textarea id="input" class="input" rows="1"
-          placeholder="Escreva uma ideia, dúvida ou tarefa…  (Enter envia · Shift+Enter quebra linha)"></textarea>
+          placeholder="Escreva uma ideia, dúvida ou tarefa…  (Enter envia · Shift+Enter quebra linha · @nome menciona)"></textarea>
         <button id="send" class="send" type="button">Enviar</button>
       </div>
     </footer>
+  </div>
+
+  <div id="cfgpanel" class="cfgpanel" hidden>
+    <div class="cfgpanel-card">
+      <h2>Configuração das IAs</h2>
+      <p class="cfgpanel-hint">Nomes usados para mencionar (<span class="mention know">@nome</span>) e destacar cada IA.</p>
+      <div class="cfg-list" id="cfglist"></div>
+      <div class="cfg-add">
+        <input id="cfgin" class="cfg-input" type="text" placeholder="nome da IA" maxlength="32" />
+        <button id="cfgadd" class="cfg-add-btn" type="button">Adicionar</button>
+      </div>
+      <div class="cfg-actions">
+        <button id="cfgclose" class="cfg-close" type="button">Fechar</button>
+        <button id="cfgsave" class="cfg-save" type="button">Salvar</button>
+      </div>
+    </div>
   </div>
 
   <script src="/app.js"></script>
