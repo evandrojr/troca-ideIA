@@ -139,6 +139,24 @@ func (m *RoomManager) Names() []map[string]any {
 	return out
 }
 
+// Rename altera o nome de exibição de uma sala, mantendo o slug (e portanto a
+// URL e os arquivos de histórico/IAs) intactos. Retorna false se não existir.
+func (m *RoomManager) Rename(slug, name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.rooms[slug]
+	if !ok {
+		return false
+	}
+	r.name = name
+	m.saveLocked()
+	return true
+}
+
 // saveLocked grava a lista de salas no disco.
 func (m *RoomManager) saveLocked() {
 	if m.file == "" {

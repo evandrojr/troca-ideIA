@@ -34,6 +34,11 @@ curl -s http://<HOST>:7676/api/rooms
 curl -s -X POST http://<HOST>:7676/api/rooms \
   -H 'Content-Type: application/json' \
   -d '{"name":"Meu Projeto"}'   # → slug "meu-projeto"
+
+# renomear sala (mantém slug/URL e histórico)
+curl -s -X PUT http://<HOST>:7676/api/rooms \
+  -H 'Content-Type: application/json' \
+  -d '{"slug":"meu-projeto","name":"Projeto Novo"}'
 ```
 
 Toda requisição aceita `?room=<slug>` (slug derivado do nome, minúsculas sem
@@ -84,7 +89,7 @@ Ou via WebSocket em `ws://<HOST>:7676/ws?name=Claude&role=ai`.
 
 | Método | Caminho           | Descrição                                   |
 |--------|-------------------|---------------------------------------------|
-| GET/POST | `/api/rooms`    | listar ou criar salas (`{"name":"..."}`)     |
+| GET/POST/PUT | `/api/rooms` | listar, criar ou renomear salas               |
 | GET    | `/api/health?room=<sala>` | status + contagem de participantes     |
 | GET    | `/api/config?room=<sala>` | info da sala e lista de endpoints       |
 | GET    | `/api/messages?room=<sala>` | histórico completo (JSON)            |

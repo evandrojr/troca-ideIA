@@ -27,8 +27,14 @@
     return m ? decodeURIComponent(m[1]) : "";
   };
   let currentRoom = roomFromPath() || localStorage.getItem("idea_room") || "principal";
+  let currentRoomName = currentRoom; // nome de exibição (atualizado em loadRooms)
   const roomsEl = $("rooms");
   const newRoomBtn = $("newroom");
+  const renameBtn = $("rename");
+  const renamePanel = $("renamepanel");
+  const renameToEl = $("renameto");
+  const renameSaveBtn = $("renamesave");
+  const renameCloseBtn = $("renameclose");
   const roomPanel = $("roompanel");
   const roomNameEl = $("roomname");
   const roomCreateBtn = $("roomcreate");
@@ -168,6 +174,7 @@
           j.rooms = j.rooms.concat([{ slug: currentRoom, name: currentRoom, participants: 0 }]);
         }
         j.rooms.forEach((rm) => {
+          if (rm.slug === currentRoom) currentRoomName = rm.name;
           const opt = document.createElement("option");
           opt.value = rm.slug;
           opt.textContent = rm.name + (rm.participants ? ` (${rm.participants})` : "");
@@ -249,6 +256,46 @@
     if (e.key === "Enter") {
       e.preventDefault();
       createRoom();
+    }
+  });
+
+  // ---- renomear sala (mantém o slug/URL) ----
+  const openRename = () => {
+    renameToEl.value = currentRoomName;
+    renamePanel.hidden = false;
+    renameToEl.focus();
+    renameToEl.select();
+  };
+  const saveRename = () => {
+    const name = renameToEl.value.trim();
+    if (!name) return;
+    fetch("/api/rooms", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug: currentRoom, name }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error("falha ao renomear");
+        return r.json();
+      })
+      .then((j) => {
+        renamePanel.hidden = true;
+        currentRoomName = j.name;
+        loadRooms();
+        loadAINames();
+      })
+      .catch(() => {});
+  };
+  renameBtn.addEventListener("click", openRename);
+  renameCloseBtn.addEventListener("click", () => (renamePanel.hidden = true));
+  renamePanel.addEventListener("mousedown", (ev) => {
+    if (ev.target === renamePanel) renamePanel.hidden = true;
+  });
+  renameSaveBtn.addEventListener("click", saveRename);
+  renameToEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      saveRename();
     }
   });
 

@@ -28,6 +28,7 @@
     <nav class="roombar" aria-label="Salas">
       <span class="roomlabel">Sala</span>
       <select id="rooms" class="rooms" autocomplete="off" title="Selecionar sala"></select>
+      <button id="rename" class="cfg-btn" type="button" title="Renomear sala">✎</button>
       <button id="newroom" class="cfg-btn" type="button" title="Criar nova sala">＋</button>
     </nav>
 
@@ -58,6 +59,20 @@
       <div class="cfg-actions">
         <button id="cfgclose" class="cfg-close" type="button">Fechar</button>
         <button id="cfgsave" class="cfg-save" type="button">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="renamepanel" class="cfgpanel" hidden>
+    <div class="cfgpanel-card">
+      <h2>Renomear sala</h2>
+      <p class="cfgpanel-hint">O endereço (slug) e o histórico da sala não mudam.</p>
+      <div class="cfg-add">
+        <input id="renameto" class="cfg-input" type="text" placeholder="novo nome da sala" maxlength="40" />
+        <button id="renamesave" class="cfg-add-btn" type="button">Salvar</button>
+      </div>
+      <div class="cfg-actions">
+        <button id="renameclose" class="cfg-close" type="button">Cancelar</button>
       </div>
     </div>
   </div>

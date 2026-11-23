@@ -51,8 +51,23 @@ func newServer(rooms *RoomManager) http.Handler {
 				"slug": room.Slug(),
 				"name": room.Name(),
 			})
+		case http.MethodPut:
+			var body struct {
+				Slug string `json:"slug"`
+				Name string `json:"name"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body.Slug == "" {
+				http.Error(w, "slug da sala obrigatório", http.StatusBadRequest)
+				return
+			}
+			if !rooms.Rename(body.Slug, body.Name) {
+				http.Error(w, "sala não encontrada ou nome vazio", http.StatusNotFound)
+				return
+			}
+			writeJSON(w, map[string]any{"ok": true, "slug": body.Slug, "name": strings.TrimSpace(body.Name)})
 		default:
-			w.Header().Set("Allow", "GET, POST")
+			w.Header().Set("Allow", "GET, POST, PUT")
 			http.Error(w, "método não permitido", http.StatusMethodNotAllowed)
 		}
 	})
