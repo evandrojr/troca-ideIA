@@ -83,22 +83,43 @@ func newServer(rooms *RoomManager) http.Handler {
 
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		room := roomOf(r)
-		writeJSON(w, map[string]any{
-			"room":         room.Slug(),
-			"room_name":    room.Name(),
-			"rooms":        rooms.Names(),
-			"participants": room.Count(),
-			"guide":        "/guide",
-			"ia_names":     room.AINames().Names(),
-			"history_max":  room.MaxHistory(), // 0 = ilimitado
-			"endpoints": map[string]string{
-				"rooms":   "GET/POST /api/rooms",
-				"ws":      "/ws?room=<sala>&name=<nome>&role=human|ai",
-				"history": "GET /api/messages?room=<sala>",
-				"send":    "POST /api/messages?room=<sala>",
-				"watch":   "GET /api/watch?room=<sala>&since=<idx>&timeout=25",
-			},
-		})
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, map[string]any{
+				"room":         room.Slug(),
+				"room_name":    room.Name(),
+				"rooms":        rooms.Names(),
+				"participants": room.Count(),
+				"guide":        "/guide",
+				"ia_names":     room.AINames().Names(),
+				"history_max":  room.MaxHistory(), // 0 = ilimitado
+				"endpoints": map[string]string{
+					"rooms":  "GET/POST /api/rooms",
+					"ws":     "/ws?room=<sala>&name=<nome>&role=human|ai",
+					"history": "GET /api/messages?room=<sala>",
+					"send":   "POST /api/messages?room=<sala>",
+					"watch":  "GET /api/watch?room=<sala>&since=<idx>&timeout=25",
+					"status": "GET/POST /api/status?room=<sala> (name+task; task vazio = ocioso)",
+					"health": "GET /api/health?room=<sala>",
+					"ia_names": "GET/POST /api/ia-names?room=<sala>",
+				},
+			})
+		case http.MethodPost:
+			var body struct {
+				HistoryMax int `json:"history_max"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body.HistoryMax < 0 {
+				http.Error(w, "history_max deve ser >= 0 (0 = ilimitado)", http.StatusBadRequest)
+				return
+			}
+			room.SetMaxHistory(body.HistoryMax)
+			w.WriteHeader(http.StatusOK)
+			writeJSON(w, map[string]any{"ok": true, "history_max": room.MaxHistory()})
+		default:
+			w.Header().Set("Allow", "GET, POST")
+			http.Error(w, "método não permitido", http.StatusMethodNotAllowed)
+		}
 	})
 
 	mux.HandleFunc("/api/ia-names", func(w http.ResponseWriter, r *http.Request) {
@@ -117,6 +138,33 @@ func newServer(rooms *RoomManager) http.Handler {
 				return
 			}
 			writeJSON(w, map[string]any{"ok": true, "names": ai.Names()})
+		default:
+			w.Header().Set("Allow", "GET, POST")
+			http.Error(w, "método não permitido", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
+		room := roomOf(r)
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, map[string]any{"statuses": room.Statuses()})
+		case http.MethodPost:
+			var body struct {
+				Name string `json:"name"`
+				Task string `json:"task"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if len(body.Name) > 32 {
+				http.Error(w, "name deve ter no máximo 32 caracteres", http.StatusBadRequest)
+				return
+			}
+			if len(body.Task) > 500 {
+				http.Error(w, "task deve ter no máximo 500 caracteres", http.StatusBadRequest)
+				return
+			}
+			room.SetStatus(body.Name, body.Task)
+			writeJSON(w, map[string]any{"ok": true, "statuses": room.Statuses()})
 		default:
 			w.Header().Set("Allow", "GET, POST")
 			http.Error(w, "método não permitido", http.StatusMethodNotAllowed)

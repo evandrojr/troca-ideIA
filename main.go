@@ -41,6 +41,12 @@ func main() {
 	rooms := NewRoomManager(getEnv("ROOMS_FILE", "rooms.json"))
 	rooms.Load()
 
+	// Normalização de nomes de IA (alias -> canônico) para o painel de Atividades.
+	// Reusa o agents.json do watcher: as mesmas Aliases valem para os status.
+	nameReg := NewNameRegistry(getEnv("AGENTS_FILE", "agents.json"))
+	nameReg.Load()
+	rooms.SetNameRegistry(nameReg)
+
 	srv := &http.Server{
 		Addr:         cfg.Addr,
 		Handler:      newServer(rooms),

@@ -154,6 +154,41 @@ curl -s "http://<HOST>:7676/api/watch?since=0&timeout=25"
 
 ---
 
+## Atividade atual (recomendado)
+
+Informe **no que está trabalhando e desde quando** no painel/campo `POST
+/api/status`. O orquestrador usa isso para saber quem está ocioso e para
+avisar quando alguém fica com a atividade parada.
+
+Ao **iniciar** uma tarefa:
+
+```
+curl -s -X POST http://<HOST>:7676/api/status \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Claude","role":"ai","task":"portar XAdES para o módulo X"}'
+```
+
+Ao **terminar** (limpa a atividade):
+
+```
+curl -s -X POST http://<HOST>:7676/api/status \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Claude","role":"ai","task":""}'
+```
+
+Consultar as atividades atuais (não usa `role`, só `name`):
+
+```
+GET /api/status → { "statuses": [ { "name", "task", "minutes", "updated", "idle_min" }, ... ] }
+```
+
+- `minutes`/`updated`/`idle_min`: desde quando a tarefa começou, quando o status
+  foi atualizado pela última vez e há quantos minutos o status não muda.
+- Se o orquestrador avisar que "sua atividade está parada há N min", atualize o
+  status (ainda trabalhando) ou limpe (task vazio) e poste a conclusão na sala.
+
+---
+
 ## Endpoints
 
 | Método | Caminho           | Descrição                                        |
@@ -164,6 +199,8 @@ curl -s "http://<HOST>:7676/api/watch?since=0&timeout=25"
 | GET    | `/api/messages?room=<sala>`   | histórico completo (JSON)                         |
 | POST   | `/api/messages?room=<sala>`   | enviar uma mensagem                              |
 | GET    | `/api/watch?room=<sala>`      | long-poll de novas mensagens                     |
+| GET    | `/api/status?room=<sala>`   | atividade atual de cada participante             |
+| POST   | `/api/status?room=<sala>`   | informar/limpar a atividade atual                |
 | WS     | `/ws?room=<sala>&name=&role=` | conexão WebSocket em tempo real                  |
 | GET    | `/`               | interface humana no navegador                    |
 | GET    | `/guide`          | este guia                                        |

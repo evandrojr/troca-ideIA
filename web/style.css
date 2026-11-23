@@ -23,14 +23,22 @@ html, body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
+.layout {
+  display: flex;
+  height: 100vh;
+  width: 100%;
+}
+
 .app {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  flex: 1;
   max-width: 900px;
   margin: 0 auto;
   border-left: 1px solid var(--border);
   border-right: 1px solid var(--border);
+  min-width: 0;
 }
 
 /* ---- topbar ---- */
@@ -80,6 +88,82 @@ html, body {
 }
 .cfg-btn:hover { color: var(--text); border-color: var(--accent); }
 
+/* ---- painel lateral de atividades ---- */
+.statuspanel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: var(--activ-w, clamp(340px, 28vw, 440px));
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 14px 14px 12px;
+  z-index: 60;
+  overflow-y: auto;
+}
+.statuspanel[hidden] { display: none; }
+.statuspanel-resizer {
+  position: absolute;
+  top: 0;
+  left: -5px;
+  width: 10px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+.statuspanel-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 3px;
+  height: 100%;
+  width: 2px;
+  background: var(--border);
+  transition: background 0.15s ease;
+}
+.statuspanel-resizer:hover::after { background: var(--accent); }
+.statuspanel-resizer:active::after { background: var(--accent); }
+.statuspanel[hidden] .statuspanel-resizer { display: none; }
+.statuspanel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.statuspanel-head h2 { margin: 0; font-size: 16px; }
+.statuspanel-hint { margin: 4px 0 12px; font-size: 12px; color: var(--muted); }
+.statuspanel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+.statuspanel-refresh {
+  margin-top: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.statuspanel-refresh:hover { border-color: var(--accent); }
+@media (max-width: 720px) {
+  .statuspanel { display: none; }
+  .statuspanel.open-small { display: flex; position: fixed; inset: 0; width: auto; }
+  .statuspanel-resizer { display: none; }
+}
+@media (min-width: 721px) {
+  .app { transition: margin-right 0.2s ease; }
+  body.side-open .app {
+    margin-right: var(--activ-w, clamp(340px, 28vw, 440px));
+  }
+}
+}
+
 /* ---- configuração das IAs ---- */
 .cfgpanel {
   position: fixed;
@@ -120,6 +204,80 @@ html, body {
 }
 .cfg-item .ai-tag { color: var(--accent-2); font-weight: 700; }
 .cfg-item .name { flex: 1; color: var(--text); }
+.activ-item { flex-wrap: wrap; gap: 2px; align-items: flex-start; }
+.activ-head { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; }
+.activ-head .name { flex: 1; font-weight: 700; }
+.activ-task {
+  width: 100%;
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.activ-since {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.activ-since.stale {
+  color: var(--danger, #ff6b6b);
+  font-weight: 700;
+}
+.activ-poke {
+  border: 1px solid var(--muted-border, #3d444d);
+  background: transparent;
+  color: var(--muted, #8b98a5);
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.activ-poke:hover:not(:disabled) {
+  border-color: var(--accent-2, #4ade80);
+  color: var(--accent-2, #4ade80);
+}
+.activ-poke:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.activ-poke.ok {
+  border-color: var(--accent-2, #4ade80);
+  color: var(--accent-2, #4ade80);
+}
+.activ-poke.wait {
+  border-color: var(--accent, #f0b429);
+  color: var(--accent, #f0b429);
+}
+.activ-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+.semaforo-verde { background: #2ea043; box-shadow: 0 0 6px rgba(46,160,67,0.7); }
+.semaforo-amarelo { background: #d29922; box-shadow: 0 0 6px rgba(210,153,34,0.7); }
+.semaforo-vermelho { background: #f85149; box-shadow: 0 0 6px rgba(248,81,73,0.7); }
+.semaforo-cinza { background: #525c66; }
+.semaforo-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12px;
+  color: var(--muted, #8b98a5);
+  margin-bottom: 8px;
+  align-items: center;
+}
+.semaforo-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.semaforo-legend .activ-dot {
+  width: 9px;
+  height: 9px;
+}
 .cfg-del {
   background: none;
   border: 1px solid var(--border);
@@ -312,6 +470,8 @@ html, body {
 }
 .body h1 + *, .body h2 + *, .body h3 + * { margin-top: 4px; }
 .body strong { font-weight: 700; }
+.body ul, .body ol { margin: 6px 0; padding-left: 20px; }
+.body li { margin: 3px 0; }
 .body em { font-style: italic; }
 .body a { color: #b48cff; text-decoration: underline; }
 .body a:hover { text-decoration: none; }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -68,10 +69,48 @@ type Room struct {
 
 	ai *AINames // nomes de IA configurados desta sala (configuração por sala)
 
+	// status guarda "no quê" cada participante está trabalhando, informado via
+	// POST /api/status. Listado na aba Atividades do frontend.
+	status map[string]*Status
+
+	// canon normaliza apelidos de IA para o nome canônico (ex.: "📐 usabilidade-a11y"
+	// -> "usabilidade-a11y"), evitando a mesma IA repetida no painel de Atividades.
+	// nil = sem normalização.
+	canon *NameRegistry
+
 	historyFile string // caminho do arquivo de persistência ("" = sem persistência)
 	// maxHistory limita o nº de mensagens mantidas em memória (histórico + snapshot).
 	// 0 = ilimitado. Config via HISTORY_MAX=0|500|...
 	maxHistory int
+}
+
+// Status informa a tarefa atual de um participante e desde quando.
+type Status struct {
+	Name    string    `json:"name"`
+	Task    string    `json:"task"`
+	Since   time.Time `json:"-"`
+	Updated time.Time `json:"-"`
+}
+
+func (s *Status) MarshalJSON() ([]byte, error) {
+	type alias struct {
+		Name    string `json:"name"`
+		Task    string `json:"task"`
+		Since   string `json:"since"`
+		Minutes int64  `json:"minutes"` // minutos desde o início da tarefa
+		Updated string `json:"updated"`
+		IdleMin int64  `json:"idle_min"` // minutos desde a última atualização do status
+	}
+	a := alias{Name: s.Name, Task: s.Task}
+	if !s.Since.IsZero() {
+		a.Since = s.Since.Format(time.RFC3339)
+		a.Minutes = int64(time.Since(s.Since).Minutes())
+	}
+	if !s.Updated.IsZero() {
+		a.Updated = s.Updated.Format(time.RFC3339)
+		a.IdleMin = int64(time.Since(s.Updated).Minutes())
+	}
+	return json.Marshal(a)
 }
 
 const activeWindow = 15 * time.Minute // janela de "online" para quem não mantém WS
@@ -92,6 +131,7 @@ func NewRoom(slug, name, historyFile string, maxHistory int) *Room {
 		broadcast:   make(chan Message, 512),
 		watchers:    make(map[chan struct{}]struct{}),
 		lastSeen:    make(map[string]time.Time),
+		status:      make(map[string]*Status),
 		historyFile: historyFile,
 		maxHistory:  maxHistory,
 	}
@@ -292,6 +332,85 @@ func (r *Room) HistoryLen() int {
 
 // MaxHistory devolve o limite de mensagens retidas (0 = ilimitado).
 func (r *Room) MaxHistory() int { return r.maxHistory }
+
+// SetMaxHistory altera o limite de mensagens retidas em tempo de execução.
+// n <= 0 libera o teto (ilimitado). O histórico já residente é ajustado.
+func (r *Room) SetMaxHistory(n int) {
+	if n < 0 {
+		n = 0
+	}
+	r.mu.Lock()
+	r.maxHistory = n
+	r.trimHistory()
+	r.mu.Unlock()
+}
+
+// SetNameRegistry define a normalização de nomes (alias -> canônico) usada em
+// SetStatus e Statuses. Pode ser chamado antes de primeiro uso; nil desativa.
+func (r *Room) SetNameRegistry(reg *NameRegistry) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.canon = reg
+}
+
+// SetStatus registra/atualiza a tarefa atual de um participante. task vazio
+// encerra a tarefa (participante fica sem "atividade corrente").
+func (r *Room) SetStatus(name, task string) {
+	if cleanName(name) == "Anônimo" {
+		return
+	}
+	now := time.Now()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.canon != nil {
+		name = r.canon.Canonical(name)
+	}
+	s, ok := r.status[name]
+	if !ok {
+		s = &Status{Name: name}
+		r.status[name] = s
+	}
+	if task == "" {
+		s.Task = ""
+		s.Since = time.Time{}
+	} else if s.Task != task {
+		s.Task = task
+		s.Since = now
+	}
+	s.Updated = now
+}
+
+// Statuses devolve uma cópia das tarefas atuais (nome -> status), ordenadas
+// por Updated (mais recente primeiro). Apelidos são colapsados no nome canônico
+// (mantém o status mais recente entre os sinônimos), para a mesma IA não
+// aparecer repetida.
+func (r *Room) Statuses() []*Status {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	byCanon := map[string]*Status{}
+	for _, s := range r.status {
+		if s.Task == "" {
+			continue
+		}
+		cp := *s
+		name := cp.Name
+		if r.canon != nil {
+			name = r.canon.Canonical(name)
+		}
+		cp.Name = name
+		prev, ok := byCanon[name]
+		if ok && prev.Updated.After(cp.Updated) {
+			continue
+		}
+		byCanon[name] = &cp
+	}
+	out := make([]*Status, 0, len(byCanon))
+	for _, s := range byCanon {
+		out = append(out, s)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Updated.After(out[j].Updated) })
+	return out
+}
 
 // DistinctAINames devolve nomes distintos de Role=="ai" presentes no histórico,
 // na ordem de aparição. Usado para semear a configuração de IAs na 1ª execução.

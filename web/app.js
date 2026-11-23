@@ -147,6 +147,56 @@
       .catch(() => {});
   });
 
+  // ---- limite do histórico (history_max) ----
+  const cfgHist = $("cfghist");
+  const cfgHistSet = $("cfghistset");
+  const cfgHistInfo = $("cfghistinfo");
+
+  const loadHistoryMax = () => {
+    fetch("/api/config")
+      .then((r) => r.json())
+      .then((j) => {
+        if (typeof j.history_max === "number") {
+          cfgHist.value = j.history_max;
+          cfgHistInfo.textContent =
+            j.history_max === 0
+              ? "Atual: ilimitado"
+              : "Atual: até " + j.history_max + " mensagens";
+        }
+      })
+      .catch(() => {});
+  };
+  cfgBtn.addEventListener("click", loadHistoryMax, { once: true });
+
+  cfgHistSet.addEventListener("click", () => {
+    const v = parseInt(cfgHist.value, 10);
+    if (Number.isNaN(v) || v < 0) {
+      cfgHistInfo.textContent = "Digite um número >= 0 (0 = ilimitado).";
+      return;
+    }
+    fetch("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ history_max: v }),
+    })
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.ok) {
+          cfgHistInfo.textContent =
+            j.history_max === 0
+              ? "Salvo: ilimitado."
+              : "Salvo: até " + j.history_max + " mensagens.";
+        }
+      })
+      .catch(() => {});
+  });
+  cfgHist.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      cfgHistSet.click();
+    }
+  });
+
   // ---- contagem de participantes ----
   const refreshParticipants = () => {
     fetch("/api/health" + roomU())
@@ -321,6 +371,246 @@
       connect();
     }
   });
+  // ---- painel lateral de atividades: o que cada um está fazendo ----
+  const activBtn = $("activ");
+  const activPanel = $("activpanel");
+  const activList = $("activlist");
+  const activClose = $("activclose");
+  const activRefresh = $("activrefresh");
+
+  const fmtDuration = (mins) => {
+    if (mins < 60) return "h\u00e1 " + mins + " min";
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return "h\u00e1 " + h + "h" + (m ? " " + m + "min" : "");
+  };
+
+  // semáforo: quem está trabalhando vs. ocioso.
+  //   verde   = com tarefa, status recente (incrições em dia)
+  //   amarelo = com tarefa, parado há >= 10 min (quase cutucada)
+  //   vermelho= com tarefa, parado há >= 20 min (limite da cutucada)
+  //   cinza   = sem tarefa (ocioso / livre)
+  const statusLevel = (s) => {
+    if (!s.task) return "idle";
+    const idle = typeof s.idle_min === "number" ? s.idle_min : 0;
+    if (idle >= 20) return "stuck";
+    if (idle >= 10) return "warn";
+    return "busy";
+  };
+  const LEVEL_META = {
+    busy:  { cls: "semaforo-verde", label: "trabalhando" },
+    warn:  { cls: "semaforo-amarelo", label: "parado há " + "≥10min" },
+    stuck: { cls: "semaforo-vermelho", label: "cutucado" },
+    idle:  { cls: "semaforo-cinza", label: "ocioso" },
+  };
+
+  const LABEL_IDLE = "\u00a0cutucar";
+
+  // pokes pendentes: nome -> { at, ack, task-before, updated-before }
+  const pokes = new Map();
+  const POKE_WAIT_MS = 5 * 60 * 1000; // espera de confirmação
+
+  const cutucar = (who, btn) => {
+    const content =
+      "@" + who +
+      " — cutucada do painel de status de " + name +
+      ". Por favor leia a sala (GET /api/messages), e CONFIRME no seu status " +
+      "que recebeu (POST /api/status com a sua atividade atual, ex.: task=\"recebi cutucada: <o que vai fazer>\").";
+    const sendMsg = (payload) =>
+      fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }).then((r) => r.json());
+    const capture = (s) => ({ task: (s && s.task) || "", updated: (s && s.updated) || "" });
+    sendMsg({ name, role: "human", content }).then(() => {
+      fetch("/api/status")
+        .then((r) => r.json())
+        .then((j) => {
+          const me = (Array.isArray(j.statuses) ? j.statuses : []).find((s) => s.name === who);
+          pokes.set(who, { at: Date.now(), ack: false, before: capture(me) });
+        });
+    });
+    if (btn) setPokeBtn(btn, "wait");
+  };
+
+  const setPokeBtn = (btn, state) => {
+    if (!btn) return;
+    btn.disabled = state === "wait";
+    if (state === "wait") {
+      btn.classList.add("wait");
+      btn.classList.remove("ok");
+      btn.textContent = "aguardando...";
+    } else if (state === "ok") {
+      btn.classList.add("ok");
+      btn.classList.remove("wait");
+      btn.textContent = "✓ respondeu";
+    } else {
+      btn.classList.remove("ok", "wait");
+      btn.textContent = LABEL_IDLE;
+    }
+  };
+
+  // durante o refresh, detecta se o alvo mexeu no status (confirmou a cutucada)
+  const reconcilePokes = (list) => {
+    const now = Date.now();
+    pokes.forEach((p, who) => {
+      const cur = list.find((s) => s.name === who);
+      if (p.ack) return;
+      if (now - p.at > POKE_WAIT_MS) {
+        pokes.delete(who); // expirou
+        return;
+      }
+      // ack: status mudou (task com conteúdo novo OU updated mudou) desde a cutucada
+      if (cur) {
+        const taskChanged = cur.task && cur.task !== p.before.task;
+        const updatedChanged = cur.updated && cur.updated !== p.before.updated;
+        if (taskChanged || updatedChanged) {
+          p.ack = true;
+        }
+      }
+    });
+  };
+
+  const loadActivities = () => {
+    const statuses = fetch("/api/status").then((r) => r.json());
+    const names = fetch("/api/config")
+      .then((r) => r.json())
+      .then((j) => (Array.isArray(j.ia_names) ? j.ia_names : []))
+      .catch(() => []);
+    Promise.all([statuses, names])
+      .then(([j, iaNames]) => {
+        activList.innerHTML = "";
+        const list = Array.isArray(j.statuses) ? j.statuses : [];
+        const shown = new Set();
+        list.forEach((s) => shown.add(s.name));
+        // participantes conhecidos (IAs cadastradas) sem status → ocioso
+        iaNames.forEach((n) => {
+          if (!shown.has(n)) {
+            list.push({ name: n, task: "", since: "", minutes: 0, idle_min: 0 });
+            shown.add(n);
+          }
+        });
+        list.sort((a, b) => (a.name < b.name ? -1 : 1));
+        reconcilePokes(list);
+        if (list.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "cfg-item";
+          empty.innerHTML =
+            '<span class="name" style="opacity:.6">Ningu\u00e9m informou atividade ainda</span>';
+          activList.appendChild(empty);
+          return;
+        }
+        list.forEach((s) => {
+          const lvl = statusLevel(s);
+          const meta = LEVEL_META[lvl];
+          const it = document.createElement("div");
+          it.className = "cfg-item activ-item";
+          const head = document.createElement("div");
+          head.className = "activ-head";
+          head.innerHTML =
+            '<span class="activ-dot ' + meta.cls + '" title="' + meta.label + '"></span>' +
+            '<span class="name">' + escapeHtml(s.name) + "</span>";
+          const since = document.createElement("span");
+          since.className = "activ-since";
+          if (s.since) {
+            since.textContent = fmtDuration(s.minutes);
+          } else if (lvl === "idle") {
+            since.textContent = "ocioso";
+          }
+          if (lvl === "stuck" || lvl === "warn") {
+            since.classList.add("stale");
+            since.textContent += " · " + meta.label;
+          }
+          const pokeBtn = document.createElement("button");
+          pokeBtn.type = "button";
+          pokeBtn.className = "activ-poke";
+          pokeBtn.textContent = "cutucar";
+          pokeBtn.title = "Envia um recado @ na sala para " + s.name;
+          pokeBtn.dataset.name = s.name;
+          const pending = pokes.get(s.name);
+          if (pending) {
+            if (pending.ack === true) {
+              pokeBtn.textContent = "✓ respondeu";
+              pokeBtn.classList.add("ok");
+            } else {
+              pokeBtn.textContent = "aguardando...";
+              pokeBtn.classList.add("wait");
+            }
+          }
+          pokeBtn.addEventListener("click", () => {
+            cutucar(s.name, pokeBtn);
+          });
+          head.appendChild(since);
+          head.appendChild(pokeBtn);
+          const taskEl = document.createElement("div");
+          taskEl.className = "activ-task";
+          if (s.task) {
+            taskEl.textContent = s.task;
+          } else if (lvl === "idle") {
+            taskEl.textContent = "Sem atividade informada";
+            taskEl.style.opacity = ".6";
+          }
+          it.appendChild(head);
+          it.appendChild(taskEl);
+          activList.appendChild(it);
+        });
+      })
+      .catch(() => {});
+  };
+  activRefresh.addEventListener("click", loadActivities);
+  activClose.addEventListener("click", () => {
+    activPanel.hidden = true;
+    document.body.classList.remove("side-open");
+  });
+  activBtn.addEventListener("click", () => {
+    const willOpen = activPanel.hidden;
+    activPanel.hidden = !willOpen;
+    document.body.classList.toggle("side-open", willOpen);
+    if (willOpen) loadActivities();
+  });
+  setupActivResize();
+  loadActivities();
+
+  // ---- painel de atividades: redimensionável (largura mín./máx., lembra o valor) ----
+  function setupActivResize() {
+    const handle = $("activresize");
+    const MIN = 260, MAX = 720;
+    function apply() {
+      const w = activPanel.offsetWidth;
+      document.documentElement.style.setProperty("--activ-w", w + "px");
+      try { localStorage.setItem("activpanel.width", String(w)); } catch (_) { }
+    }
+    try {
+      const saved = parseInt(localStorage.getItem("activpanel.width") || "0", 10);
+      if (saved >= MIN && saved <= MAX) {
+        document.documentElement.style.setProperty("--activ-w", saved + "px");
+      }
+    } catch (_) { }
+    handle.addEventListener("pointerdown", (ev) => {
+      ev.preventDefault();
+      handle.setPointerCapture(ev.pointerId);
+      const startX = ev.clientX;
+      const startW = activPanel.getBoundingClientRect().width;
+      const onMove = (e) => {
+        activPanel.style.setProperty("--activ-w", "auto");
+        const w = Math.max(MIN, Math.min(MAX, startW + (startX - e.clientX)));
+        document.documentElement.style.setProperty("--activ-w", w + "px");
+      };
+      const onUp = () => {
+        handle.removeEventListener("pointermove", onMove);
+        handle.removeEventListener("pointerup", onUp);
+        apply();
+        document.body.classList.remove("resizing");
+      };
+      document.body.classList.add("resizing");
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", onUp);
+    });
+  }
+  setInterval(() => {
+    if (!activPanel.hidden) loadActivities();
+  }, 15000);
 
   // ---- conexão ----
   let ws;
@@ -457,10 +747,39 @@
     html = html.replace(/(?<!["=])https?:\/\/[^\s<)]+/g, (url) => {
       return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
     });
+    html = html.replace(/(^|\n)((?:[-*] [^\r\n]+)(?:\r?\n[-*] [^\r\n]+)*)/g, (m, pre, block) => {
+      const items = block
+        .split(/\r?\n/)
+        .map((l) => "<li>" + l.replace(/^[-*] /, "") + "</li>")
+        .join("");
+      return pre + "<ul>" + items + "</ul>";
+    });
+    html = html.replace(/(^|\n)((?:\d+[.)] [^\r\n]+)(?:\r?\n\d+[.)] [^\r\n]+)*)/g, (m, pre, block) => {
+      const items = block
+        .split(/\r?\n/)
+        .map((l) => "<li>" + l.replace(/^\d+[.)] /, "") + "</li>")
+        .join("");
+      return pre + "<ol>" + items + "</ol>";
+    });
     html = html.replace(/`([^`\n]+)`/g, "<code>$1</code>");
     html = html.replace(/(^|[\s(])@([A-Za-zÀ-ÿ0-9][\w.-]*(?:\s[\w./()-]+)*)(?=[\s,.;:!?)])/g, (m, pre, name) => {
       const cls = knownNames.has(name) ? "mention know" : "mention";
       return pre + '<span class="' + cls + '">@' + escapeHtml(name) + "</span>";
+    });
+    // listas: linhas consecutivas "- item" ou "1. item" viram <ul>/<ol>
+    html = html.replace(
+      /(^|\n)(?:([-*])\s+(?=[^\s])([^\n]*)\n(?:\2\s+(?=[^\s])[^\n]*\n)*)(?=\S|$)/g,
+      (m, pre, marker, first) => {
+        const ul = marker === "-" || marker === "*";
+        const items = (m.slice(pre.length).trim() + "\n")
+          .replace(/(^|\n)[-*]\s+/g, "\n") // bullets
+          .trim()
+          .split("\n");
+        return pre + (ul ? "<ul>" : "<ol>") + items.map((i) => "<li>" + i + "</li>").join("") + (ul ? "</ul>" : "</ol>");
+      }
+    );
+    html = html.replace(/^(\d+)[.][ \t]+([^\n]+(?:\n(?!\d+[.][ \t])[^\n]*)*)/gm, (m, n, rest) => {
+      return "<ol><li>" + m.replace(/\n(\d+)[.][ \t]+/g, "</li><li>") + "</li></ol>";
     });
     html = html.replace(/\r?\n/g, "<br>");
     return html;

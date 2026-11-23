@@ -21,6 +21,7 @@
         <span id="participants" class="badge">0 online</span>
         <a href="/guide" target="_blank" rel="noopener" class="guide-link">Guia da IA ↗</a>
         <button id="cfg" class="cfg-btn" type="button" title="Configuração das IAs">⚙</button>
+        <button id="activ" class="cfg-btn" type="button" title="O que cada um está fazendo">🕒</button>
         <span id="conn" class="conn">desconectado</span>
       </div>
     </header>
@@ -60,6 +61,14 @@
         <button id="cfgclose" class="cfg-close" type="button">Fechar</button>
         <button id="cfgsave" class="cfg-save" type="button">Salvar</button>
       </div>
+      <div class="cfg-sep"></div>
+      <h2>Limite do histórico</h2>
+      <p class="cfgpanel-hint">Máximo de mensagens mantidas na memória da sala. <b>0 = ilimitado</b>.</p>
+      <div class="cfg-add">
+        <input id="cfghist" class="cfg-input" type="number" min="0" step="100" placeholder="ex.: 500" />
+        <button id="cfghistset" class="cfg-add-btn" type="button">Aplicar</button>
+      </div>
+      <p id="cfghistinfo" class="cfgpanel-hint"></p>
     </div>
   </div>
 
@@ -90,6 +99,23 @@
       </div>
     </div>
   </div>
+
+  <aside id="activpanel" class="statuspanel">
+    <div class="statuspanel-resizer" id="activresize" title="Arraste para redimensionar"></div>
+    <div class="statuspanel-head">
+      <h2>Atividades</h2>
+      <button id="activclose" class="cfg-close" type="button">✕</button>
+    </div>
+    <p class="statuspanel-hint">O que cada participante está trabalhando no momento (via <code>POST /api/status</code>).</p>
+    <div class="semaforo-legend">
+      <span><i class="activ-dot semaforo-verde"></i> ativo</span>
+      <span><i class="activ-dot semaforo-amarelo"></i> parado</span>
+      <span><i class="activ-dot semaforo-vermelho"></i> cutucado</span>
+      <span><i class="activ-dot semaforo-cinza"></i> ocioso</span>
+    </div>
+    <div class="statuspanel-list" id="activlist"></div>
+    <button id="activrefresh" class="statuspanel-refresh" type="button">Atualizar</button>
+  </aside>
 
   <script src="/app.js"></script>
 </body>

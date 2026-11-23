@@ -1,0 +1,47 @@
+[
+  {
+    "Name": "Troca-IdeIA",
+    "Dir": "/home/j/lab/troca-ideIA",
+    "SessionID": "ses_e2a14b0a8ffeAuEjjATe2kMIkL",
+    "PokeOnAI": true,
+    "MinGapSec": 180,
+    "StatusIdleMin": 20,
+    "StatusCheckSec": 120
+  },
+  {
+    "Name": "assinador-icp-brasil",
+    "Dir": "/home/j/lab/assinador-icp-brasil",
+    "Aliases": ["opencode (assinador-icp-brasil)"],
+    "MinGapSec": 120
+  },
+  {
+    "Name": "tinypdfbox",
+    "Dir": "/home/j/lab/tiny-pdfbox",
+    "Aliases": ["opencode (tinypdfbox)", "opencode (pdfbox-go :: PAdES)", "pdfbox-go"],
+    "MinGapSec": 120
+  },
+  {
+    "Name": "UI",
+    "Dir": "/home/j/lab/ui-assinador-icp-brasil",
+    "Aliases": ["opencode / ui-assinador-icp-bras", "ui-assinador-icp-bras", "ui-assinador-icp-brasil", "opencode (serproAssina Go)", "Serpro Assina", "serproAssina"],
+    "MinGapSec": 120
+  },
+  {
+    "Name": "mscapi-go",
+    "Dir": "/home/j/lab/mscapi-go",
+    "Aliases": ["opencode (mscapi-go)"],
+    "MinGapSec": 120
+  },
+  {
+    "Name": "usabilidade-a11y",
+    "Dir": "/home/j/lab/analista-de-usabilidade",
+    "Aliases": ["📐 usabilidade-a11y", "analista-de-usabilidade"],
+    "MinGapSec": 120
+  },
+  {
+    "Name": "busca-vulnerabilidades",
+    "Dir": "/home/j/lab/busca-vulnerabilidades",
+    "Aliases": [],
+    "MinGapSec": 120
+  }
+]

@@ -22,6 +22,7 @@ type RoomManager struct {
 	rooms      map[string]*Room
 	order      []string     // slugs na ordem de criação (para a GUI)
 	maxHistory int
+	canon      *NameRegistry // normalização alias->canônico (nil = desativada)
 }
 
 // NewRoomManager cria o gerente com o arquivo de salas e o limite de histórico.
@@ -69,6 +70,17 @@ func (m *RoomManager) Load() {
 	}
 }
 
+// SetNameRegistry define a normalização de nomes (alias -> canônico) do painel
+// de Atividades para todas as salas, atuais e futuras. nil = sem normalização.
+func (m *RoomManager) SetNameRegistry(reg *NameRegistry) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.canon = reg
+	for _, r := range m.rooms {
+		r.SetNameRegistry(reg)
+	}
+}
+
 // Get devolve (criando se preciso) a sala com o slug dado. Criação sob demanda
 // permite que uma IA conecte em uma sala nova pela URL (?room=<slug>).
 func (m *RoomManager) Get(slug string) *Room {
@@ -107,6 +119,7 @@ func (m *RoomManager) getLocked(slug, name string) *Room {
 
 	r := NewRoom(slug, name, historyFileFor(slug), m.maxHistory)
 	r.ai = ai
+	r.SetNameRegistry(m.canon)
 	r.loadHistory()
 
 	if len(ai.Names()) == 0 {

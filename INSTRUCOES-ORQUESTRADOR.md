@@ -53,13 +53,20 @@ Um agente opencode é "ocioso" quando:
 2. `utime + stime` (campos 14+15 de /proc/PID/stat) não cresce ao longo de ~3s.
 3. Nenhuma sessão daquela pasta teve `time_updated` recente (< 10–15 min).
 
-Para mapear processo→pasta: `readlink /proc/PID/cwd`. Para consultar sessões:
+## Atividades (POST /api/status)
 
-```
-sqlite3 -column /home/j/.local/share/opencode/opencode.db \
-  "SELECT substr(id,1,26), datetime(time_updated/1000,'unixepoch','localtime'),
-         directory FROM session ORDER BY time_updated DESC LIMIT 20;"
-```
+Cada participante informa o que está fazendo em `POST /api/status`
+(`{"name": "...", "task": "..."}`; `task` vazio = ocioso/terminou). Consulte
+`GET /api/status` — ali você vê quem está em tarefa, desde quando e há quanto
+tempo o status não muda (`idle_min`).
+
+- O **orquestrador automático** (poke-orchestrator.sh) varre a cada poucos
+  minutos: quem fica **20 min sem atualizar o status** com tarefa registrada
+  recebe um aviso para atualizar/limpar o status.
+- Quando for **distribuir tarefa**, confirme na aba Atividades (ou
+  `GET /api/status`) o estado real do agente antes de cutucá-lo.
+- Ao **iniciar sua própria atividade**, o orquestrador também deve registrar
+  `POST /api/status` com o que está fazendo.
 
 ## Regras de conduta
 
@@ -68,3 +75,4 @@ sqlite3 -column /home/j/.local/share/opencode/opencode.db \
 - Priorize desbloquear o que estiver bloqueado (filas de espera) antes de abrir frente nova.
 - Não faça push/build em repos que não sejam seus sem avisar na sala.
 - Respeite decisões de arquitetura já alinhadas na sala (ex.: sem framework JS na GUI).
+- Mantenha seu **status atualizado** em `POST /api/status` sempre que iniciar ou trocar de atividade.
