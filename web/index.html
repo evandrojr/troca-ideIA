@@ -25,6 +25,12 @@
       </div>
     </header>
 
+    <nav class="roombar" aria-label="Salas">
+      <span class="roomlabel">Sala</span>
+      <select id="rooms" class="rooms" autocomplete="off" title="Selecionar sala"></select>
+      <button id="newroom" class="cfg-btn" type="button" title="Criar nova sala">＋</button>
+    </nav>
+
     <main id="messages" class="messages" aria-live="polite"></main>
 
     <div id="typing" class="typing" hidden></div>
@@ -52,6 +58,20 @@
       <div class="cfg-actions">
         <button id="cfgclose" class="cfg-close" type="button">Fechar</button>
         <button id="cfgsave" class="cfg-save" type="button">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="roompanel" class="cfgpanel" hidden>
+    <div class="cfgpanel-card">
+      <h2>Nova sala</h2>
+      <p class="cfgpanel-hint">Cada sala tem histórico e lista de IAs próprios.</p>
+      <div class="cfg-add">
+        <input id="roomname" class="cfg-input" type="text" placeholder="nome da sala" maxlength="40" />
+        <button id="roomcreate" class="cfg-add-btn" type="button">Criar</button>
+      </div>
+      <div class="cfg-actions">
+        <button id="roomclose" class="cfg-close" type="button">Cancelar</button>
       </div>
     </div>
   </div>

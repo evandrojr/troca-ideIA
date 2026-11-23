@@ -2,7 +2,10 @@ node_modules/
 *.exe
 troca-ideia
 history.jsonl
+history-*.jsonl
 ia-names.json
+ia-names-*.json
+rooms.json
 .env
 cmd/poke/bin/
 *.log

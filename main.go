@@ -38,22 +38,12 @@ func main() {
 
 	cfg := Config{Addr: getEnv("ADDR", ":7676")}
 
-	room := NewRoom()
-	room.loadHistory()
-	go room.Run()
-
-	aiNames := NewAINames(getEnv("IA_NAMES_FILE", "ia-names.json"))
-	aiNames.Load()
-	if len(aiNames.Names()) == 0 {
-		// primeira execução: aproveita os nomes de IA que já aparecem no histórico
-		if err := aiNames.Seed(room.DistinctAINames()); err != nil {
-			slog.Warn("não foi possível gravar config de IA", "err", err)
-		}
-	}
+	rooms := NewRoomManager(getEnv("ROOMS_FILE", "rooms.json"))
+	rooms.Load()
 
 	srv := &http.Server{
 		Addr:         cfg.Addr,
-		Handler:      newServer(room, aiNames),
+		Handler:      newServer(rooms),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 0, // long-poll / watch pode segurar a resposta
 		IdleTimeout:  120 * time.Second,
@@ -61,9 +51,10 @@ func main() {
 
 	logger.Info("servidor rodando",
 		"url", "http://localhost"+portSuffix(cfg.Addr)+"/",
-		"modo", "sala única (humanos + IAs)",
+		"modo", "multissalas (humanos + IAs)",
+		"salas", len(rooms.Names()),
 		"guia", "/guide",
-		"history_max", room.MaxHistory(), // 0 = ilimitado
+		"history_max", rooms.maxHistory, // 0 = ilimitado
 	)
 	if err := srv.ListenAndServe(); err != nil {
 		slog.Error("servidor falhou", "err", err)

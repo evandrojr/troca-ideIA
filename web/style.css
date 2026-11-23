@@ -178,6 +178,39 @@ html, body {
   white-space: nowrap;
 }
 .guide-link:hover { color: var(--accent); }
+
+/* ---- seletor de salas ---- */
+.roombar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+}
+.roomlabel {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.rooms {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+}
+.rooms:focus { border-color: var(--accent); }
+.rooms option { background: var(--panel); color: var(--text); }
+#newroom { flex: none; }
+
 .role {
   display: inline-block;
   font-size: 10px;

@@ -19,6 +19,33 @@
   });
   if (!name) name = "Anônimo";
 
+  // ---- sala atual (persistida no navegador) ----
+  // A sala vem da URL /sala/<slug> (fácil de copiar e mandar para as IAs);
+  // sem URL, usa a sala salva ou a "principal".
+  const roomFromPath = () => {
+    const m = location.pathname.match(/^\/sala\/([^/?#]+)/);
+    return m ? decodeURIComponent(m[1]) : "";
+  };
+  let currentRoom = roomFromPath() || localStorage.getItem("idea_room") || "principal";
+  const roomsEl = $("rooms");
+  const newRoomBtn = $("newroom");
+  const roomPanel = $("roompanel");
+  const roomNameEl = $("roomname");
+  const roomCreateBtn = $("roomcreate");
+  const roomCloseBtn = $("roomclose");
+  const roomU = () => "?room=" + encodeURIComponent(currentRoom);
+  // atualiza a URL sem recarregar a página; mantém o histórico (botão voltar)
+  const setRoomURL = (slug) => {
+    if (roomFromPath() !== slug) {
+      history.pushState(null, "", "/sala/" + encodeURIComponent(slug));
+    }
+  };
+  // normalização de abertura: ao abrir a raiz "/", a URL passa a mostrar a sala
+  // atual (vinda da URL, do localStorage, ou a principal) — sem criar histórico.
+  if (!roomFromPath()) {
+    history.replaceState(null, "", "/sala/" + encodeURIComponent(currentRoom));
+  }
+
   // ---- nomes de IA configurados (servidor) ----
   let aiNames = []; // lista atual editada no painel
   const cfgBtn = $("cfg");
@@ -30,7 +57,7 @@
   const cfgClose = $("cfgclose");
 
   const loadAINames = () => {
-    fetch("/api/ia-names")
+    fetch("/api/ia-names" + roomU())
       .then((r) => r.json())
       .then((j) => {
         if (Array.isArray(j.names)) {
@@ -97,7 +124,7 @@
     }
   });
   cfgSave.addEventListener("click", () => {
-    fetch("/api/ia-names", {
+    fetch("/api/ia-names" + roomU(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ names: aiNames }),
@@ -116,7 +143,7 @@
 
   // ---- contagem de participantes ----
   const refreshParticipants = () => {
-    fetch("/api/health")
+    fetch("/api/health" + roomU())
       .then((r) => r.json())
       .then((j) => {
         if (typeof j.participants === "number") {
@@ -128,6 +155,126 @@
   refreshParticipants();
   setInterval(refreshParticipants, 5000);
 
+  // ---- gerenciamento de salas ----
+  const loadRooms = () => {
+    fetch("/api/rooms")
+      .then((r) => r.json())
+      .then((j) => {
+        if (!Array.isArray(j.rooms)) return;
+        roomsEl.innerHTML = "";
+        const hasCurrent = j.rooms.some((rm) => rm.slug === currentRoom);
+        if (!hasCurrent) {
+          // sala da URL ainda não registrada (criada sob demanda no connect)
+          j.rooms = j.rooms.concat([{ slug: currentRoom, name: currentRoom, participants: 0 }]);
+        }
+        j.rooms.forEach((rm) => {
+          const opt = document.createElement("option");
+          opt.value = rm.slug;
+          opt.textContent = rm.name + (rm.participants ? ` (${rm.participants})` : "");
+          opt.selected = rm.slug === currentRoom;
+          roomsEl.appendChild(opt);
+        });
+      })
+      .catch(() => {});
+  };
+
+  const enterRoom = (slug) => {
+    slug = slug || "principal";
+    if (slug === currentRoom) return;
+    currentRoom = slug;
+    localStorage.setItem("idea_room", slug);
+    setRoomURL(slug);
+    // limpa a interface e reconecta na nova sala
+    if (ws && ws.readyState <= WebSocket.OPEN) {
+      try { ws.close(); } catch (_) {}
+    }
+    messagesEl.innerHTML = "";
+    bubbles.clear();
+    lastDay = "";
+    aiNames = [];
+    knownNames.clear();
+    clearTyping();
+    hideMentionMenu();
+    loadRooms();
+    loadAINames();
+    refreshParticipants();
+    connect();
+  };
+
+  roomsEl.addEventListener("change", () => enterRoom(roomsEl.value));
+  newRoomBtn.addEventListener("click", () => {
+    roomNameEl.value = "";
+    roomPanel.hidden = false;
+    roomNameEl.focus();
+  });
+  roomCloseBtn.addEventListener("click", () => (roomPanel.hidden = true));
+  roomPanel.addEventListener("mousedown", (ev) => {
+    if (ev.target === roomPanel) roomPanel.hidden = true;
+  });
+  const createRoom = () => {
+    const name = roomNameEl.value.trim();
+    if (!name) return;
+    fetch("/api/rooms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    })
+      .then((r) => r.json())
+      .then((j) => {
+        roomPanel.hidden = true;
+        if (j.ok && j.slug) {
+          currentRoom = j.slug;
+          localStorage.setItem("idea_room", j.slug);
+          setRoomURL(j.slug);
+          if (ws && ws.readyState <= WebSocket.OPEN) {
+            try { ws.close(); } catch (_) {}
+          }
+          messagesEl.innerHTML = "";
+          bubbles.clear();
+          lastDay = "";
+          aiNames = [];
+          knownNames.clear();
+          clearTyping();
+          hideMentionMenu();
+          loadRooms();
+          loadAINames();
+          refreshParticipants();
+          connect();
+        }
+      })
+      .catch(() => {});
+  };
+  roomCreateBtn.addEventListener("click", createRoom);
+  roomNameEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      createRoom();
+    }
+  });
+
+  // navegação com botão voltar/avançar do navegador (muda a sala pela URL)
+  window.addEventListener("popstate", () => {
+    const slug = roomFromPath() || "principal";
+    if (slug !== currentRoom) {
+      currentRoom = slug;
+      localStorage.setItem("idea_room", slug);
+      if (ws && ws.readyState <= WebSocket.OPEN) {
+        try { ws.close(); } catch (_) {}
+      }
+      messagesEl.innerHTML = "";
+      bubbles.clear();
+      lastDay = "";
+      aiNames = [];
+      knownNames.clear();
+      clearTyping();
+      hideMentionMenu();
+      loadRooms();
+      loadAINames();
+      refreshParticipants();
+      connect();
+    }
+  });
+
   // ---- conexão ----
   let ws;
   const bubbles = new Map(); // id -> { el, body, _buf }
@@ -137,7 +284,7 @@
   function connect() {
     const proto = location.protocol === "https:" ? "wss" : "ws";
     ws = new WebSocket(
-      `${proto}://${location.host}/ws?name=${encodeURIComponent(name)}`
+      `${proto}://${location.host}/ws?name=${encodeURIComponent(name)}&room=${encodeURIComponent(currentRoom)}`
     );
     ws.onopen = () => {
       connEl.textContent = "conectado";
@@ -452,5 +599,6 @@
     }
   }
 
+  loadRooms();
   connect();
 })();

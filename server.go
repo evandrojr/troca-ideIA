@@ -4,7 +4,9 @@ import (
 	_ "embed"
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/websocket"
 )
@@ -15,47 +17,91 @@ var agentsGuide []byte
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	// Sala única de desenvolvimento interno: aceita qualquer Origin.
+	// Sala de desenvolvimento interno: aceita qualquer Origin.
 	CheckOrigin: func(*http.Request) bool { return true },
 }
 
-func newServer(room *Room, aiNames *AINames) http.Handler {
+func newServer(rooms *RoomManager) http.Handler {
 	mux := http.NewServeMux()
 
+	// roomOf resolve a sala alvo pela query param ?room=<slug>. Sem param, usa a
+	// sala "principal". Salas desconhecidas são criadas sob demanda.
+	roomOf := func(r *http.Request) *Room {
+		slug := r.URL.Query().Get("room")
+		return rooms.Get(slug)
+	}
+
+	mux.HandleFunc("/api/rooms", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, map[string]any{"rooms": rooms.Names()})
+		case http.MethodPost:
+			var body struct {
+				Name string `json:"name"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			name := strings.TrimSpace(body.Name)
+			if name == "" {
+				http.Error(w, "nome da sala obrigatório", http.StatusBadRequest)
+				return
+			}
+			room := rooms.Create(name)
+			writeJSON(w, map[string]any{
+				"ok":   true,
+				"slug": room.Slug(),
+				"name": room.Name(),
+			})
+		default:
+			w.Header().Set("Allow", "GET, POST")
+			http.Error(w, "método não permitido", http.StatusMethodNotAllowed)
+		}
+	})
+
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]any{"status": "ok", "participants": room.Count()})
+		room := roomOf(r)
+		writeJSON(w, map[string]any{
+			"status":       "ok",
+			"room":         room.Slug(),
+			"participants": room.Count(),
+		})
 	})
 
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
+		room := roomOf(r)
 		writeJSON(w, map[string]any{
-			"room":         "principal",
+			"room":         room.Slug(),
+			"room_name":    room.Name(),
+			"rooms":        rooms.Names(),
 			"participants": room.Count(),
 			"guide":        "/guide",
-			"ia_names":     aiNames.Names(),
+			"ia_names":     room.AINames().Names(),
 			"history_max":  room.MaxHistory(), // 0 = ilimitado
 			"endpoints": map[string]string{
-				"ws":      "/ws?name=<nome>&role=human|ai",
-				"history": "GET /api/messages",
-				"send":    "POST /api/messages",
-				"watch":   "GET /api/watch?since=<idx>&timeout=25",
+				"rooms":   "GET/POST /api/rooms",
+				"ws":      "/ws?room=<sala>&name=<nome>&role=human|ai",
+				"history": "GET /api/messages?room=<sala>",
+				"send":    "POST /api/messages?room=<sala>",
+				"watch":   "GET /api/watch?room=<sala>&since=<idx>&timeout=25",
 			},
 		})
 	})
 
 	mux.HandleFunc("/api/ia-names", func(w http.ResponseWriter, r *http.Request) {
+		room := roomOf(r)
+		ai := room.AINames()
 		switch r.Method {
 		case http.MethodGet:
-			writeJSON(w, map[string]any{"names": aiNames.Names()})
+			writeJSON(w, map[string]any{"names": ai.Names()})
 		case http.MethodPost:
 			var body struct {
 				Names []string `json:"names"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			if err := aiNames.Set(body.Names); err != nil {
+			if err := ai.Set(body.Names); err != nil {
 				http.Error(w, "falha ao salvar", http.StatusInternalServerError)
 				return
 			}
-			writeJSON(w, map[string]any{"ok": true, "names": aiNames.Names()})
+			writeJSON(w, map[string]any{"ok": true, "names": ai.Names()})
 		default:
 			w.Header().Set("Allow", "GET, POST")
 			http.Error(w, "método não permitido", http.StatusMethodNotAllowed)
@@ -63,6 +109,7 @@ func newServer(room *Room, aiNames *AINames) http.Handler {
 	})
 
 	mux.HandleFunc("/api/messages", func(w http.ResponseWriter, r *http.Request) {
+		room := roomOf(r)
 		switch r.Method {
 		case http.MethodGet:
 			snap := room.Snapshot()
@@ -83,6 +130,7 @@ func newServer(room *Room, aiNames *AINames) http.Handler {
 	})
 
 	mux.HandleFunc("/api/watch", func(w http.ResponseWriter, r *http.Request) {
+		room := roomOf(r)
 		since, _ := strconv.Atoi(r.URL.Query().Get("since"))
 		timeout, _ := strconv.Atoi(r.URL.Query().Get("timeout"))
 		if timeout < 1 {
@@ -102,6 +150,7 @@ func newServer(room *Room, aiNames *AINames) http.Handler {
 	})
 
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		room := roomOf(r)
 		name := r.URL.Query().Get("name")
 		role := r.URL.Query().Get("role")
 		conn, err := upgrader.Upgrade(w, r, nil)
@@ -119,6 +168,12 @@ func newServer(room *Room, aiNames *AINames) http.Handler {
 			}
 		}
 		go c.readPump()
+	})
+
+	// Sala na URL: /sala/<slug> serve a interface web; o frontend lê o slug e
+	// se conecta naquela sala. Sala desconhecida é criada sob demanda no /ws.
+	mux.HandleFunc("/sala/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, filepath.Join("web", "index.html"))
 	})
 
 	// frontend humano (index.html, app.js, style.css)

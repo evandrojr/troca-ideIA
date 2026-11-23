@@ -63,6 +63,11 @@ type Room struct {
 	// HTTP comunicam por POST /api/messages + long-poll /api/watch.
 	lastSeen map[string]time.Time
 
+	slug string // identificador URL-safe da sala (ex.: "principal")
+	name string // nome de exibição da sala
+
+	ai *AINames // nomes de IA configurados desta sala (configuração por sala)
+
 	historyFile string // caminho do arquivo de persistência ("" = sem persistência)
 	// maxHistory limita o nº de mensagens mantidas em memória (histórico + snapshot).
 	// 0 = ilimitado. Config via HISTORY_MAX=0|500|...
@@ -71,19 +76,35 @@ type Room struct {
 
 const activeWindow = 15 * time.Minute // janela de "online" para quem não mantém WS
 
-func NewRoom() *Room {
-	f := getEnv("HISTORY_FILE", "history.jsonl")
+func NewRoom(slug, name, historyFile string, maxHistory int) *Room {
+	if slug == "" {
+		slug = "principal"
+	}
+	if name == "" {
+		name = "Principal"
+	}
 	return &Room{
+		slug:        slug,
+		name:        name,
 		clients:     make(map[*Client]bool),
 		register:    make(chan *Client, 16),
 		unregister:  make(chan *Client, 16),
 		broadcast:   make(chan Message, 512),
 		watchers:    make(map[chan struct{}]struct{}),
 		lastSeen:    make(map[string]time.Time),
-		historyFile: f,
-		maxHistory:  getEnvInt("HISTORY_MAX", 500),
+		historyFile: historyFile,
+		maxHistory:  maxHistory,
 	}
 }
+
+// Slug devolve o identificador URL-safe da sala.
+func (r *Room) Slug() string { return r.slug }
+
+// Name devolve o nome de exibição da sala.
+func (r *Room) Name() string { return r.name }
+
+// AINames devolve a configuração de nomes de IA desta sala.
+func (r *Room) AINames() *AINames { return r.ai }
 
 // loadHistory reconstrói o histórico do disco caso HISTORY_FILE esteja definido.
 // Chame antes de Run.
