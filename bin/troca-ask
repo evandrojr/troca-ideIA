@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Faz uma pergunta estruturada ao humano na sala troca-ideIA.
+# Uso: troca-ask <nome> <pergunta...> [--to <agente>] [--option "rótulo[=valor]"]... [--multi] [--free]
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+bin="$root/cmd/troca/bin/troca"
+if [[ ! -x "$bin" || "$root/cmd/troca/main.go" -nt "$bin" ]]; then
+  mkdir -p "$(dirname "$bin")"
+  (cd "$root" && go build -o "$bin" ./cmd/troca)
+fi
+exec "$bin" ask "$@"

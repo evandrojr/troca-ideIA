@@ -3,6 +3,7 @@
     "Name": "Troca-IdeIA",
     "Dir": "/home/j/lab/troca-ideIA",
     "SessionID": "ses_e2a14b0a8ffeAuEjjATe2kMIkL",
+    "Terminal": "troca-troca-ideia",
     "PokeOnAI": true,
     "MinGapSec": 180,
     "StatusIdleMin": 20,
@@ -12,36 +13,42 @@
     "Name": "assinador-icp-brasil",
     "Dir": "/home/j/lab/assinador-icp-brasil",
     "Aliases": ["opencode (assinador-icp-brasil)"],
+    "Terminal": "troca-assinador-icp-brasil",
     "MinGapSec": 120
   },
   {
     "Name": "tinypdfbox",
     "Dir": "/home/j/lab/tiny-pdfbox",
     "Aliases": ["opencode (tinypdfbox)", "opencode (pdfbox-go :: PAdES)", "pdfbox-go"],
+    "Terminal": "troca-tinypdfbox",
     "MinGapSec": 120
   },
   {
     "Name": "UI",
     "Dir": "/home/j/lab/ui-assinador-icp-brasil",
     "Aliases": ["opencode / ui-assinador-icp-bras", "ui-assinador-icp-bras", "ui-assinador-icp-brasil", "opencode (serproAssina Go)", "Serpro Assina", "serproAssina"],
+    "Terminal": "troca-ui",
     "MinGapSec": 120
   },
   {
     "Name": "mscapi-go",
     "Dir": "/home/j/lab/mscapi-go",
     "Aliases": ["opencode (mscapi-go)"],
+    "Terminal": "troca-mscapi-go",
     "MinGapSec": 120
   },
   {
     "Name": "usabilidade-a11y",
     "Dir": "/home/j/lab/analista-de-usabilidade",
     "Aliases": ["📐 usabilidade-a11y", "analista-de-usabilidade"],
+    "Terminal": "troca-usabilidade-a11y",
     "MinGapSec": 120
   },
   {
     "Name": "busca-vulnerabilidades",
     "Dir": "/home/j/lab/busca-vulnerabilidades",
     "Aliases": [],
+    "Terminal": "troca-busca-vulnerabilidades",
     "MinGapSec": 120
   }
 ]

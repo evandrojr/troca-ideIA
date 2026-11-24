@@ -1,0 +1,15 @@
+{
+  "place": "none",
+  "palette": [
+    {
+      "title": "Abrir sala troca-ideIA",
+      "command": "tab.new",
+      "args": {
+        "name": "troca-ideIA",
+        "mod": "troca-chat",
+        "props": { "room": "principal" }
+      },
+      "words": "chat ideias IA herdr"
+    }
+  ]
+}

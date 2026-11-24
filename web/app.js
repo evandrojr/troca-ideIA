@@ -40,6 +40,10 @@
   const roomCreateBtn = $("roomcreate");
   const roomCloseBtn = $("roomclose");
   const roomU = () => "?room=" + encodeURIComponent(currentRoom);
+  // api() garante que toda chamada HTTP vá para a sala aberta (incluindo as
+  // chamadas mais antigas do painel de atividades).
+  const api = (path) =>
+    path + (path.includes("?") ? "&" : "?") + "room=" + encodeURIComponent(currentRoom);
   // atualiza a URL sem recarregar a página; mantém o histórico (botão voltar)
   const setRoomURL = (slug) => {
     if (roomFromPath() !== slug) {
@@ -63,7 +67,7 @@
   const cfgClose = $("cfgclose");
 
   const loadAINames = () => {
-    fetch("/api/ia-names" + roomU())
+    fetch(api("/api/ia-names"))
       .then((r) => r.json())
       .then((j) => {
         if (Array.isArray(j.names)) {
@@ -115,6 +119,61 @@
   cfgPanel.addEventListener("mousedown", (ev) => {
     if (ev.target === cfgPanel) cfgPanel.hidden = true;
   });
+
+  // ---- assistente de pergunta ao humano/IA (web component copiado) ----
+  // O <chat-wizard> é o mesmo de /home/j/lab/serproAssina/nova-tela; aqui ele
+  // usa um <select> para o destinatário e um <input> de texto para a mensagem.
+  const askBtn = $("ask");
+  const askPanel = $("askpanel");
+  const askWizard = $("askwizard");
+  let askTarget = "";
+
+  const setupAskFlow = () => {
+    const targets = aiNames.length ? aiNames.slice() : Array.from(knownNames);
+    const options = targets.length
+      ? targets.map((n) => ({ label: n, value: n }))
+      : [{ label: "Todas as IAs (sem @)", value: "" }];
+    askTarget = options.length === 1 && options[0].value === "" ? "" : options[0].value;
+    askWizard.flow = [
+      {
+        type: "select",
+        content: "Para quem é a pergunta?",
+        placeholder: "Escolha a IA…",
+        options,
+        next: 1,
+      },
+      {
+        type: "input",
+        content: "Qual é a mensagem?",
+        placeholder: "Escreva aqui… (Enter envia)",
+        multiline: true,
+        next: "end",
+      },
+    ];
+  };
+
+  askBtn.addEventListener("click", () => {
+    setupAskFlow();
+    askPanel.hidden = false;
+  });
+  $("askclose").addEventListener("click", () => (askPanel.hidden = true));
+  askPanel.addEventListener("mousedown", (ev) => {
+    if (ev.target === askPanel) askPanel.hidden = true;
+  });
+  askWizard.addEventListener("chat-answer", (ev) => {
+    const { step, answer } = ev.detail;
+    if (step.type === "select") {
+      askTarget = String(answer || "");
+      return;
+    }
+    if (step.type === "input") {
+      const text = String(answer || "").trim();
+      if (!text) return;
+      const content = askTarget ? "@" + askTarget + " " + text : text;
+      sendWs({ type: "message", name, role: "human", content });
+      setTimeout(() => (askPanel.hidden = true), 400);
+    }
+  });
   cfgAdd.addEventListener("click", () => {
     const v = cfgIn.value.trim();
     if (v && !aiNames.includes(v)) {
@@ -130,7 +189,7 @@
     }
   });
   cfgSave.addEventListener("click", () => {
-    fetch("/api/ia-names" + roomU(), {
+    fetch(api("/api/ia-names"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ names: aiNames }),
@@ -153,7 +212,7 @@
   const cfgHistInfo = $("cfghistinfo");
 
   const loadHistoryMax = () => {
-    fetch("/api/config")
+    fetch(api("/api/config"))
       .then((r) => r.json())
       .then((j) => {
         if (typeof j.history_max === "number") {
@@ -174,7 +233,7 @@
       cfgHistInfo.textContent = "Digite um número >= 0 (0 = ilimitado).";
       return;
     }
-    fetch("/api/config", {
+    fetch(api("/api/config"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ history_max: v }),
@@ -199,7 +258,7 @@
 
   // ---- contagem de participantes ----
   const refreshParticipants = () => {
-    fetch("/api/health" + roomU())
+    fetch(api("/api/health"))
       .then((r) => r.json())
       .then((j) => {
         if (typeof j.participants === "number") {
@@ -247,6 +306,7 @@
     }
     messagesEl.innerHTML = "";
     bubbles.clear();
+    questionCards.clear();
     lastDay = "";
     aiNames = [];
     knownNames.clear();
@@ -288,6 +348,7 @@
           }
           messagesEl.innerHTML = "";
           bubbles.clear();
+    questionCards.clear();
           lastDay = "";
           aiNames = [];
           knownNames.clear();
@@ -360,6 +421,7 @@
       }
       messagesEl.innerHTML = "";
       bubbles.clear();
+    questionCards.clear();
       lastDay = "";
       aiNames = [];
       knownNames.clear();
@@ -417,14 +479,14 @@
       ". Por favor leia a sala (GET /api/messages), e CONFIRME no seu status " +
       "que recebeu (POST /api/status com a sua atividade atual, ex.: task=\"recebi cutucada: <o que vai fazer>\").";
     const sendMsg = (payload) =>
-      fetch("/api/messages", {
+      fetch(api("/api/messages"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       }).then((r) => r.json());
     const capture = (s) => ({ task: (s && s.task) || "", updated: (s && s.updated) || "" });
     sendMsg({ name, role: "human", content }).then(() => {
-      fetch("/api/status")
+      fetch(api("/api/status"))
         .then((r) => r.json())
         .then((j) => {
           const me = (Array.isArray(j.statuses) ? j.statuses : []).find((s) => s.name === who);
@@ -473,8 +535,8 @@
   };
 
   const loadActivities = () => {
-    const statuses = fetch("/api/status").then((r) => r.json());
-    const names = fetch("/api/config")
+    const statuses = fetch(api("/api/status")).then((r) => r.json());
+    const names = fetch(api("/api/config"))
       .then((r) => r.json())
       .then((j) => (Array.isArray(j.ia_names) ? j.ia_names : []))
       .catch(() => []);
@@ -615,6 +677,7 @@
   // ---- conexão ----
   let ws;
   const bubbles = new Map(); // id -> { el, body, _buf }
+  const questionCards = new Map(); // question id -> { wizard, answered }
   let lastDay = ""; // data do último cabeçalho de dia inserido
   const knownNames = new Set(); // nomes para autocomplete de @menção
 
@@ -644,6 +707,15 @@
     switch (msg.type) {
       case "message":
         addOrSet(msg.id, msg.name, msg.role, msg.content, msg.ts);
+        clearTyping();
+        break;
+      case "question":
+        addQuestion(msg);
+        clearTyping();
+        break;
+      case "answer":
+        addOrSet(msg.id, msg.name, msg.role, msg.content, msg.ts);
+        if (msg.question && msg.question.id) markQuestionAnswered(msg.question.id);
         clearTyping();
         break;
       case "typing":
@@ -687,6 +759,138 @@
     messagesEl.appendChild(wrap);
     bubbles.set(id, { el: wrap, body, _buf: content });
     scrollDown();
+  }
+
+  // ---- perguntas: toda pergunta aparece na sala com o web component ----
+  // O card interativo fica dentro do próprio histórico, junto das mensagens.
+  // Assim o humano vê a conversa das IAs e responde sem sair da sala.
+  function buildQuestionFlow(q, prompt) {
+    const opts = Array.isArray(q.options)
+      ? q.options
+          .filter((o) => o && (o.label || o.value))
+          .map((o) => ({
+            label: o.label || String(o.value),
+            value: String(o.value != null ? o.value : o.label),
+            ...(o.next ? { next: o.next } : {}),
+          }))
+      : [];
+    const flow = [{ type: "text", content: prompt || q.prompt || "Pergunta", next: 1 }];
+    if (opts.length) {
+      if (!q.multiple && q.allow_text) {
+        opts.push({ label: "✎ Outra resposta (escrever)", value: "__text__", next: 1 });
+      }
+      flow.push({
+        type: "choice",
+        content: q.multiple ? "Escolha uma ou mais opções:" : "Escolha uma opção:",
+        options: opts,
+        multi: !!q.multiple,
+        next: q.allow_text && q.multiple ? 1 : "end",
+      });
+      if (q.allow_text) {
+        flow.push({
+          type: "input",
+          content: "Ou escreva sua resposta:",
+          placeholder: "Sua resposta…",
+          multiline: true,
+          optional: true,
+          next: "end",
+        });
+      }
+    } else {
+      flow.push({
+        type: "input",
+        content: "Sua resposta:",
+        placeholder: "Escreva aqui… (Enter envia)",
+        multiline: true,
+        next: "end",
+      });
+    }
+    return flow;
+  }
+
+  function addQuestion(msg) {
+    const q = msg.question || {};
+    if (msg.name && msg.name !== "Anônimo") knownNames.add(msg.name);
+    if (q.target) knownNames.add(q.target);
+    if (bubbles.has(msg.id)) return;
+
+    const wrap = document.createElement("div");
+    wrap.className = "msg " + (msg.role === "ai" ? "ai" : "human") + " ask";
+    const head = document.createElement("div");
+    head.className = "who";
+    const badge = msg.role === "ai" ? '<span class="role ai">IA</span> ' : '<span class="role human">humano</span> ';
+    const target = q.target ? ' <span class="ask-target">para @' + escapeHtml(q.target) + "</span>" : "";
+    head.innerHTML =
+      badge +
+      escapeHtml(msg.name || "Anônimo") +
+      ' <span class="ask-label">pergunta</span>' +
+      target +
+      '<span class="when">' +
+      fmtTs(msg.ts) +
+      "</span>";
+
+    const body = document.createElement("div");
+    body.className = "body";
+    const wiz = document.createElement("chat-wizard");
+    wiz.className = "chat-ask-wizard";
+    let answered = false;
+    wiz.addEventListener("chat-answer", (ev) => {
+      if (answered) return;
+      const a = ev.detail.answer;
+      const value = Array.isArray(a) ? a.join(", ") : String(a == null ? "" : a);
+      if (!value || value === "__text__") return; // option "outra resposta" só abre o input
+      answered = true;
+      postAnswer(msg.id, value);
+    });
+    wiz.flow = buildQuestionFlow(q, msg.content);
+
+    body.appendChild(wiz);
+    wrap.appendChild(head);
+    wrap.appendChild(body);
+    sepDay(msg.ts);
+    messagesEl.appendChild(wrap);
+    bubbles.set(msg.id, { el: wrap, body, _buf: msg.content || "" });
+    questionCards.set(msg.id, { wizard: wiz, answered: false });
+    scrollDown();
+  }
+
+  function postAnswer(questionID, value) {
+    markQuestionAnswered(questionID, value);
+    fetch(api("/api/questions/answer"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question_id: questionID,
+        name,
+        role: "human",
+        value,
+        label: value,
+      }),
+    })
+      .then((r) => r.json())
+      .then((j) => {
+        if (!j.ok) {
+          const card = questionCards.get(questionID);
+          if (card) card.wizard.log("sys", "Não foi possível registrar a resposta na sala.");
+        }
+      })
+      .catch(() => {
+        const card = questionCards.get(questionID);
+        if (card) card.wizard.log("sys", "Servidor indisponível; tente novamente.");
+      });
+  }
+
+  function markQuestionAnswered(questionID, value) {
+    const card = questionCards.get(questionID);
+    if (!card || card.answered) return;
+    card.answered = true;
+    const wiz = card.wizard;
+    if (wiz.shadowRoot) {
+      wiz.shadowRoot.querySelectorAll("button, input, select, textarea").forEach((el) => {
+        el.disabled = true;
+      });
+    }
+    wiz.log("sys", "✓ Resposta enviada" + (value ? ": " + value : "") + ".");
   }
 
   // ---- separador de data "Hoje" / "12/11" entre mensagens de dias diferentes ----

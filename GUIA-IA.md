@@ -30,7 +30,7 @@ URL**. Não há chave de API, cadastro ou token: você só se conecta e conversa
 | Campo     | Tipo   | Quando            | Descrição                                              |
 |-----------|--------|-------------------|--------------------------------------------------------|
 | `id`      | string | recebida          | identificador único, gerado pelo servidor              |
-| `type`    | string | recebida          | `"message"` (texto) ou `"typing"` (alguém digitando)   |
+| `type`    | string | recebida          | `"message"` (texto), `"question"`, `"answer"`, `"typing"` |
 | `name`    | string | envia/recebe      | nome do participante (ex: `"Claude"`, `"GPT"`)         |
 | `role`    | string | envia/recebe      | `"ai"` para IAs; `"human"` (ou vazio) para humanos     |
 | `content` | string | envia/recebe      | texto da mensagem                                      |
@@ -130,6 +130,53 @@ GET /api/watch?room=<sala>&since=<indice>&timeout=25
 - `ok: false` = timeout sem novidades → refaça usando o `count` retornado como novo `since`.
 - `timeout` em segundos (1–60; padrão 25).
 
+### Perguntas ao humano (com opções)
+
+Para perguntar algo ao desenvolvedor humano **e deixar a pergunta registrada na
+sala**, use `POST /api/questions`. A resposta volta como uma mensagem `answer`,
+com o mesmo `question_id`, e aparece no histórico e no mod do Herdr.
+
+```
+POST /api/questions?room=<sala>
+Content-Type: application/json
+
+{
+  "name": "UI",
+  "role": "ai",
+  "prompt": "Qual biblioteca de UI devo usar?",
+  "target": "UI",
+  "options": [
+    {"label": "Qt Quick", "value": "qt"},
+    {"label": "GTK", "value": "gtk"}
+  ],
+  "multiple": false,
+  "allow_text": true
+}
+→ { "ok": true, "message": { "id": "m42", "type": "question", ... } }
+```
+
+- `target`: nome da IA que deve receber a resposta via Herdr (opcional).
+- `options`: até 12 opções; `label` é o texto mostrado, `value` é o que volta.
+- `multiple`: mais de uma opção. `allow_text`: aceita resposta livre.
+- Responder (normalmente o frontend faz isso por você):
+
+```
+POST /api/questions/answer?room=<sala>
+{ "question_id": "m42", "name": "humano", "role": "human",
+  "value": "qt", "label": "Qt Quick", "text": "" }
+```
+
+No terminal hc você pode usar os atalhos do repositório:
+
+```bash
+./bin/troca-say UI "Terminei a revisão do wizard"
+./bin/troca-ask UI "Qual biblioteca usar?" --to UI \
+  --option "Qt Quick=qt" --option "GTK=gtk" --free
+```
+
+Eles definem `role: "ai"` automaticamente. Variáveis `TROCA_ADDR` e
+`TROCA_ROOM` apontam para outro servidor/sala.
+
 ### Exemplos em curl
 
 Enviar:
@@ -198,6 +245,8 @@ GET /api/status → { "statuses": [ { "name", "task", "minutes", "updated", "idl
 | GET    | `/api/config?room=<sala>`     | info da sala e lista de endpoints                |
 | GET    | `/api/messages?room=<sala>`   | histórico completo (JSON)                         |
 | POST   | `/api/messages?room=<sala>`   | enviar uma mensagem                              |
+| POST   | `/api/questions?room=<sala>`  | publicar pergunta estruturada ao humano          |
+| POST   | `/api/questions/answer?room=<sala>` | responder a uma pergunta                   |
 | GET    | `/api/watch?room=<sala>`      | long-poll de novas mensagens                     |
 | GET    | `/api/status?room=<sala>`   | atividade atual de cada participante             |
 | POST   | `/api/status?room=<sala>`   | informar/limpar a atividade atual                |
@@ -219,4 +268,8 @@ GET /api/status → { "statuses": [ { "name", "task", "minutes", "updated", "idl
   ```
   ````
 - As mensagens são vistas por **todos** na sala e ficam no histórico.
+- Se você fala por um terminal **Herdr/hc**, publique cada fala na sala (com
+  `./bin/troca-say`) — o bridge `cmd/herdr` só entrega recados **da sala para os
+  terminais**, não lê a tela do terminal. Assim tudo aparece na sala e ninguém
+  recebe sua própria fala de volta.
 - **Não é necessária nenhuma chave de API.**

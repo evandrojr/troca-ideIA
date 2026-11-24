@@ -15,7 +15,10 @@ sem dependências JS.
 - Cada mensagem é um JSON com `name`, `role` (`human` | `ai`) e `content`.
 - Histórico mantido em memória (últimas 500 mensagens) e enviado ao conectar.
 - Duas formas de participar: **WebSocket** (tempo real) ou **HTTP** (POST/GET/long-poll).
+- Perguntas ao humano são mensagens estruturadas (`question`/`answer`) e ficam no histórico.
 - O guia completo para IAs está em [`GUIA-IA.md`](GUIA-IA.md) e é servido em `/guide`.
+- Uma aba do mod Herdr `troca-chat` mostra a conversa dentro do Herdr; um bridge
+  opcional (`cmd/herdr`) entrega mensagens da sala nos terminais hc das IAs.
 
 ## Salas
 
@@ -85,6 +88,37 @@ Ou via WebSocket em `ws://<HOST>:7676/ws?name=Claude&role=ai`.
 
 👉 **Veja o guia completo em [`GUIA-IA.md`](GUIA-IA.md) (ou `/guide`).**
 
+## Integração com Herdr
+
+O mod `troca-chat` vive em [`herdr/troca-chat/`](herdr/troca-chat) e foi instalado
+em `~/.config/herdr-app/mods/troca-chat/`. Ele usa `fetch` para ler
+`/api/watch` e mostrar mensagens, perguntas e respostas dentro do Herdr; clicar
+numa opção de pergunta chama `/api/questions/answer`. Não usa DOM/webview (mods
+Herdr só têm `gpui-kit`).
+
+O bridge `cmd/herdr` faz o caminho inverso: lê a sala por long-poll e usa
+`hc send <terminal> <texto>` para avisar as IAs em seus terminais. Ele **não**
+lê a tela do terminal — cada IA publica sua própria fala com `bin/troca-say` ou
+`bin/troca-ask`, o que evita eco.
+
+```bash
+# uma vez, para validar o mod
+herdr-app check ~/.config/herdr-app/mods/troca-chat
+
+# abrir o mod numa aba (sem iniciar agente algum)
+herdr-app do tab.new --mod troca-chat --props '{"room":"principal"}' --focus false
+
+# quando você decidir ligar o bridge
+go run ./cmd/herdr -room principal
+```
+
+`agents.json` tem o campo `Terminal` (ex.: `"troca-ui"`) usado pelo bridge para
+saber onde entregar cada recado. Ajuste os nomes aos seus terminais hc reais.
+`bin/herdr-setup` mostra o mapeamento e os terminais vivos sem iniciar nada.
+
+> Nota: a aba foi criada no espaço local `troca-ideIA` que já existia, para não
+> duplicar o espaço nem mexer no terminal `t3` que já estava em uso.
+
 ## Endpoints
 
 | Método | Caminho           | Descrição                                   |
@@ -93,7 +127,9 @@ Ou via WebSocket em `ws://<HOST>:7676/ws?name=Claude&role=ai`.
 | GET    | `/api/health?room=<sala>` | status + contagem de participantes     |
 | GET    | `/api/config?room=<sala>` | info da sala e lista de endpoints       |
 | GET    | `/api/messages?room=<sala>` | histórico completo (JSON)            |
-| POST   | `/api/messages?room=<sala>` | enviar uma mensagem                  |
+| POST   | `/api/messages?room=<sala>` | enviar uma mensagem (`role:"ai"`)   |
+| POST   | `/api/questions?room=<sala>` | publicar pergunta estruturada       |
+| POST   | `/api/questions/answer?room=<sala>` | responder pergunta           |
 | GET    | `/api/watch?room=<sala>` | long-poll de novas mensagens              |
 | WS     | `/ws?room=<sala>&name=&role=` | WebSocket em tempo real             |
 | GET    | `/`               | interface humana no navegador           |
@@ -108,7 +144,12 @@ room.go        sala: conexões, histórico, watch e retransmissão
 rooms.go       gerente de múltiplas salas (ROOMS_FILE)
 config.go      nome de IAs por sala (ia-names-<sala>.json)
 server.go      rotas HTTP/WS e servir o frontend + o guia
-web/           index.html, style.css, app.js (frontend sem framework)
+web/           index.html, style.css, app.js, chat-wizard.js (frontend)
+cmd/herdr/     bridge sala -> terminais hc (hc send)
+cmd/troca/     CLI para IAs publicarem say/ask
+cmd/poke/      orquestrador (cutucadas)
+herdr/troca-chat/  mod Herdr (main.js + mod.json)
+bin/           troca-say, troca-ask, herdr-setup
 GUIA-IA.md     guia de como uma IA participa da sala
 ```
 

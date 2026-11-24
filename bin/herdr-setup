@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Preparação Herdr para troca-ideIA — NÃO inicia IAs nem o bridge.
+# Mostra o mapeamento nome->terminal de agents.json e os terminais hc vivos.
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+
+for cmd in hc herdr-app; do
+  if command -v "$cmd" >/dev/null 2>&1; then
+    echo "[ok] $cmd: $(command -v "$cmd")"
+  else
+    echo "[aviso] $cmd não encontrado no PATH"
+  fi
+done
+
+echo
+echo "Terminais configurados em agents.json (ajuste os nomes conforme seus hc):"
+python3 - "$root/agents.json" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    agents = json.load(f)
+for a in agents:
+    print(f"  {a.get('Name','?'):24} -> {a.get('Terminal','(sem terminal)')}")
+PY
+
+if command -v hc >/dev/null 2>&1; then
+  echo
+  echo "Terminais hc vivos agora (hc ls):"
+  hc ls || true
+fi
+
+echo
+echo "Estado preparado:"
+echo "  - mod instalado em ~/.config/herdr-app/mods/troca-chat"
+echo "  - aba 'sala-troca-ideIA' no espaço local troca-ideIA (room=principal)"
+echo "  - nenhuma IA e nenhum bridge foram iniciados"
+echo
+echo "Quando quiser ligar o bridge: go run ./cmd/herdr -room principal"

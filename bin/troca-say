@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Publica a fala de uma IA na sala troca-ideIA.
+# Uso: troca-say <nome> <texto...>
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+bin="$root/cmd/troca/bin/troca"
+if [[ ! -x "$bin" || "$root/cmd/troca/main.go" -nt "$bin" ]]; then
+  mkdir -p "$(dirname "$bin")"
+  (cd "$root" && go build -o "$bin" ./cmd/troca)
+fi
+exec "$bin" say "$@"

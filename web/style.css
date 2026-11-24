@@ -10,6 +10,16 @@
   --human: #1d4ed8;
   --ai: #1f2733;
   --code-bg: #0b0f16;
+  /* Variáveis usadas pelo <chat-wizard> copiado de serproAssina. */
+  --cw-bg: #161b22;
+  --cw-bot: #1c2230;
+  --cw-text: #e6edf3;
+  --cw-muted: #8b949e;
+  --cw-border: #2b3444;
+  --cw-accent: #7c5cff;
+  --cw-accent-text: #fff;
+  --cw-selected: #2a2350;
+  --cw-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 16px;
 }
 
@@ -398,6 +408,16 @@ html, body {
 .msg { display: flex; max-width: 85%; }
 .msg.human { align-self: flex-end; justify-content: flex-end; }
 .msg.ai { align-self: flex-start; }
+
+/* Perguntas estruturadas: o card do <chat-wizard> entra no fluxo da sala. */
+.msg.ask { flex-direction: column; max-width: 88%; }
+.msg.ask .who { margin-left: 4px; }
+.msg.ask .body { width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+.ask-label { color: var(--accent); font-weight: 700; }
+.ask-target { color: var(--muted); }
+.chat-ask-wizard { height: 300px; margin-top: 8px; }
+.askpanel-card { width: min(560px, 94vw); }
+.ask-wizard { height: 390px; }
 
 .daysep {
   align-self: center;

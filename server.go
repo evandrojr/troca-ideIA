@@ -94,14 +94,16 @@ func newServer(rooms *RoomManager) http.Handler {
 				"ia_names":     room.AINames().Names(),
 				"history_max":  room.MaxHistory(), // 0 = ilimitado
 				"endpoints": map[string]string{
-					"rooms":  "GET/POST /api/rooms",
-					"ws":     "/ws?room=<sala>&name=<nome>&role=human|ai",
-					"history": "GET /api/messages?room=<sala>",
-					"send":   "POST /api/messages?room=<sala>",
-					"watch":  "GET /api/watch?room=<sala>&since=<idx>&timeout=25",
-					"status": "GET/POST /api/status?room=<sala> (name+task; task vazio = ocioso)",
-					"health": "GET /api/health?room=<sala>",
-					"ia_names": "GET/POST /api/ia-names?room=<sala>",
+					"rooms":     "GET/POST /api/rooms",
+					"ws":        "/ws?room=<sala>&name=<nome>&role=human|ai",
+					"history":   "GET /api/messages?room=<sala>",
+					"send":      "POST /api/messages?room=<sala>",
+					"watch":     "GET /api/watch?room=<sala>&since=<idx>&timeout=25",
+					"status":    "GET/POST /api/status?room=<sala> (name+task; task vazio = ocioso)",
+					"health":    "GET /api/health?room=<sala>",
+					"ia_names":  "GET/POST /api/ia-names?room=<sala>",
+					"questions": "POST /api/questions?room=<sala> (name, role, prompt, target, options)",
+					"answers":   "POST /api/questions/answer?room=<sala> (question_id, name, value, label, text)",
 				},
 			})
 		case http.MethodPost:
@@ -190,6 +192,65 @@ func newServer(rooms *RoomManager) http.Handler {
 			w.Header().Set("Allow", "GET, POST")
 			http.Error(w, "método não permitido", http.StatusMethodNotAllowed)
 		}
+	})
+
+	// Perguntas estruturadas: IAs (ou humanos) publicam uma pergunta com opções;
+	// o humano responde pelo chat e a resposta volta para a sala como mensagem.
+	mux.HandleFunc("/api/questions", func(w http.ResponseWriter, r *http.Request) {
+		room := roomOf(r)
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			http.Error(w, "método não permitido", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			Name      string           `json:"name"`
+			Role      string           `json:"role"`
+			Prompt    string           `json:"prompt"`
+			Target    string           `json:"target"`
+			Options   []QuestionOption `json:"options"`
+			Multiple  bool             `json:"multiple"`
+			AllowText bool             `json:"allow_text"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if strings.TrimSpace(body.Prompt) == "" {
+			http.Error(w, "prompt obrigatório", http.StatusBadRequest)
+			return
+		}
+		if len(body.Options) > 12 {
+			http.Error(w, "máximo de 12 opções por pergunta", http.StatusBadRequest)
+			return
+		}
+		q := room.PostQuestion(body.Name, body.Role, body.Prompt, body.Target, body.Options, body.Multiple, body.AllowText)
+		writeJSON(w, map[string]any{"ok": true, "message": q})
+	})
+
+	mux.HandleFunc("/api/questions/answer", func(w http.ResponseWriter, r *http.Request) {
+		room := roomOf(r)
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			http.Error(w, "método não permitido", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			QuestionID string `json:"question_id"`
+			Name       string `json:"name"`
+			Role       string `json:"role"`
+			Value      string `json:"value"`
+			Label      string `json:"label"`
+			Text       string `json:"text"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if strings.TrimSpace(body.QuestionID) == "" {
+			http.Error(w, "question_id obrigatório", http.StatusBadRequest)
+			return
+		}
+		m, ok := room.AnswerQuestion(body.QuestionID, body.Name, body.Role, body.Value, body.Label, body.Text)
+		if !ok {
+			http.Error(w, "pergunta não encontrada ou já respondida", http.StatusNotFound)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "message": m})
 	})
 
 	mux.HandleFunc("/api/watch", func(w http.ResponseWriter, r *http.Request) {

@@ -8,4 +8,6 @@ ia-names-*.json
 rooms.json
 .env
 cmd/poke/bin/
+cmd/herdr/bin/
+cmd/troca/bin/
 *.log

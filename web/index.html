@@ -20,6 +20,7 @@
       <div class="status">
         <span id="participants" class="badge">0 online</span>
         <a href="/guide" target="_blank" rel="noopener" class="guide-link">Guia da IA ↗</a>
+        <button id="ask" class="cfg-btn" type="button" title="Fazer uma pergunta com select/radio/input">❓</button>
         <button id="cfg" class="cfg-btn" type="button" title="Configuração das IAs">⚙</button>
         <button id="activ" class="cfg-btn" type="button" title="O que cada um está fazendo">🕒</button>
         <span id="conn" class="conn">desconectado</span>
@@ -100,6 +101,17 @@
     </div>
   </div>
 
+  <div id="askpanel" class="cfgpanel" hidden>
+    <div class="cfgpanel-card askpanel-card">
+      <h2>Falar com uma IA</h2>
+      <p class="cfgpanel-hint">O mesmo componente de chat usado nas perguntas recebidas: <b>select</b> para o destinatário e <b>input</b> para a sua mensagem.</p>
+      <chat-wizard id="askwizard" class="ask-wizard"></chat-wizard>
+      <div class="cfg-actions">
+        <button id="askclose" class="cfg-close" type="button">Fechar</button>
+      </div>
+    </div>
+  </div>
+
   <aside id="activpanel" class="statuspanel">
     <div class="statuspanel-resizer" id="activresize" title="Arraste para redimensionar"></div>
     <div class="statuspanel-head">
@@ -117,6 +129,7 @@
     <button id="activrefresh" class="statuspanel-refresh" type="button">Atualizar</button>
   </aside>
 
+  <script src="/chat-wizard.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

@@ -51,15 +51,16 @@ type agent struct {
 	Dir           string   `json:"Dir"`
 	SessionID     string   `json:"SessionID,omitempty"`
 	Agent         string   `json:"OpenCodeAgent,omitempty"`
-	Aliases       []string `json:"Aliases,omitempty"` // nomes/menções alternativos (ex.: "UI"→ui-assinador)
+	Aliases       []string `json:"Aliases,omitempty"`  // nomes/menções alternativos (ex.: "UI"→ui-assinador)
+	Terminal      string   `json:"Terminal,omitempty"` // terminal hc usado pelo bridge (ex.: "troca-ui")
 	PokeOnAI      bool     `json:"PokeOnAI,omitempty"`
 	MinGapSec     int      `json:"MinGapSec,omitempty"`
 	StatusIdleMin int      `json:"StatusIdleMin,omitempty"`
 	StatusCheck   int      `json:"StatusCheckSec,omitempty"`
 
-	last     time.Time
-	lastMu   sync.Mutex
-	lastSwe  time.Time
+	last    time.Time
+	lastMu  sync.Mutex
+	lastSwe time.Time
 }
 
 // hits reporta se a mensagem menciona o agente (por nome ou alias) ou é do

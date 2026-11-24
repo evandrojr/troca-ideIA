@@ -19,19 +19,49 @@ import (
 type MsgType string
 
 const (
-	TypeMessage MsgType = "message" // mensagem de texto (humano ou IA)
-	TypeTyping  MsgType = "typing"  // alguém está digitando
-	TypeError   MsgType = "error"   // mensagem de erro do sistema
+	TypeMessage  MsgType = "message"  // mensagem de texto (humano ou IA)
+	TypeQuestion MsgType = "question" // pergunta (normalmente de uma IA ao humano)
+	TypeAnswer   MsgType = "answer"   // resposta do humano a uma pergunta
+	TypeTyping   MsgType = "typing"   // alguém está digitando
+	TypeError    MsgType = "error"    // mensagem de erro do sistema
 )
+
+// QuestionOption é uma alternativa de uma pergunta. Value é o que volta na
+// resposta; Label é o que aparece no chat e no mod do Herdr.
+type QuestionOption struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
+// Answer é a resposta do humano. QuestionID aponta para a mensagem "question".
+type Answer struct {
+	QuestionID string `json:"question_id"`
+	Value      string `json:"value,omitempty"`
+	Label      string `json:"label,omitempty"`
+	Text       string `json:"text,omitempty"`
+}
+
+// Question acompanha mensagens do tipo "question" e "answer". Em "answer",
+// Target diz qual agente deve receber a resposta via Herdr.
+type Question struct {
+	ID        string           `json:"id"`
+	Target    string           `json:"target,omitempty"`
+	Prompt    string           `json:"prompt,omitempty"`
+	Options   []QuestionOption `json:"options,omitempty"`
+	Multiple  bool             `json:"multiple,omitempty"`
+	AllowText bool             `json:"allow_text,omitempty"`
+	Answer    *Answer          `json:"answer,omitempty"`
+}
 
 // Message é o pacote JSON trocado entre clientes e a sala.
 type Message struct {
-	ID      string  `json:"id,omitempty"`
-	Type    MsgType `json:"type"`
-	Name    string  `json:"name,omitempty"`
-	Role    string  `json:"role,omitempty"` // "human" (padrão) | "ai"
-	Content string  `json:"content,omitempty"`
-	Ts      string  `json:"ts,omitempty"`
+	ID       string    `json:"id,omitempty"`
+	Type     MsgType   `json:"type"`
+	Name     string    `json:"name,omitempty"`
+	Role     string    `json:"role,omitempty"` // "human" (padrão) | "ai"
+	Content  string    `json:"content,omitempty"`
+	Ts       string    `json:"ts,omitempty"`
+	Question *Question `json:"question,omitempty"`
 }
 
 // Client é uma conexão WebSocket ativa de um participante.
@@ -232,12 +262,15 @@ func (r *Room) deliver(m Message) {
 		}
 		r.broadcastToAll(m)
 
-	case TypeMessage:
+	case TypeMessage, TypeQuestion, TypeAnswer:
 		if strings.TrimSpace(m.Content) == "" {
 			return
 		}
 		if m.ID == "" {
 			m.ID = r.nextID()
+		}
+		if m.Type == TypeQuestion && m.Question != nil && m.Question.ID == "" {
+			m.Question.ID = m.ID
 		}
 		if m.Ts == "" {
 			m.Ts = now()
@@ -272,6 +305,99 @@ func (r *Room) Post(name, role, content string) Message {
 	default:
 	}
 	return m
+}
+
+// PostQuestion registra uma pergunta estruturada na sala (por uma IA ao humano
+// ou ao contrário). O ID da pergunta é o ID da mensagem, o que permite ao
+// frontend e ao bridge de Herdr acharem a resposta correspondente.
+func (r *Room) PostQuestion(name, role, prompt, target string, options []QuestionOption, multiple, allowText bool) Message {
+	prompt = strings.TrimSpace(prompt)
+	if prompt == "" {
+		return Message{}
+	}
+	id := r.nextID()
+	target = strings.TrimSpace(target)
+	if target != "" {
+		target = cleanName(target)
+	}
+	m := Message{
+		ID:      id,
+		Type:    TypeQuestion,
+		Name:    cleanName(name),
+		Role:    role,
+		Content: prompt,
+		Ts:      now(),
+		Question: &Question{
+			ID:        id,
+			Target:    target,
+			Prompt:    prompt,
+			Options:   options,
+			Multiple:  multiple,
+			AllowText: allowText,
+		},
+	}
+	if m.Role != "ai" {
+		m.Role = "human"
+	}
+	select {
+	case r.broadcast <- m:
+	default:
+	}
+	return m
+}
+
+// AnswerQuestion grava a resposta como uma nova mensagem, para que o
+// /api/watch (e portanto o bridge do Herdr) a veja. A pergunta original
+// continua no histórico: a sala passa a mostrar pergunta e resposta.
+func (r *Room) AnswerQuestion(id, name, role, value, label, text string) (Message, bool) {
+	id = strings.TrimSpace(id)
+	r.mu.Lock()
+	var q *Question
+	answered := false
+	for _, m := range r.history {
+		if m.Type == TypeQuestion && m.Question != nil && m.Question.ID == id {
+			cp := *m.Question
+			q = &cp
+		}
+		if m.Type == TypeAnswer && m.Question != nil && m.Question.ID == id {
+			answered = true
+		}
+	}
+	r.mu.Unlock()
+	if q == nil || answered {
+		return Message{}, false
+	}
+
+	shown := strings.TrimSpace(label)
+	if shown == "" {
+		shown = strings.TrimSpace(text)
+	}
+	if shown == "" {
+		shown = strings.TrimSpace(value)
+	}
+	a := &Answer{QuestionID: id, Value: value, Label: label, Text: text}
+	m := Message{
+		ID:      r.nextID(),
+		Type:    TypeAnswer,
+		Name:    cleanName(name),
+		Role:    role,
+		Content: shown,
+		Ts:      now(),
+		Question: &Question{
+			ID:     id,
+			Target: q.Target,
+			Prompt: q.Prompt,
+			Answer: a,
+		},
+	}
+	if m.Role != "ai" {
+		m.Role = "human"
+	}
+	select {
+	case r.broadcast <- m:
+	default:
+	}
+	return m, true
 }
 
 func (r *Room) nextID() string {
